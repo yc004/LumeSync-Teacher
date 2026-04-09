@@ -4,7 +4,7 @@
   "description": "SyncClassroom Teacher App",
   "main": "electron/main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "node scripts/start-electron.js",
     "start:server": "node server/index.js",
     "build": "node ../../node_modules/electron-builder/cli.js --config electron-builder.json"
   },

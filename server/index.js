@@ -24,24 +24,8 @@ const {
 } = require('./src/routes');
 const { scanCourses } = require('./src/courses');
 
-function resolveLocalModule(candidates) {
-    for (const candidate of candidates) {
-        try {
-            return require(candidate);
-        } catch (_) {}
-    }
-    throw new Error(`Cannot resolve local module from candidates: ${candidates.join(', ')}`);
-}
-
-const runtimeControl = resolveLocalModule([
-    path.join(__dirname, '../packages/runtime-control'),
-    path.join(__dirname, '../../../packages/runtime-control')
-]);
-
-const renderEngine = resolveLocalModule([
-    path.join(__dirname, '../packages/render-engine'),
-    path.join(__dirname, '../../../packages/render-engine')
-]);
+const runtimeControl = require(path.join(__dirname, '../packages/runtime-control'));
+const renderEngine = require(path.join(__dirname, '../packages/render-engine'));
 
 const app = express();
 const server = http.createServer(app);

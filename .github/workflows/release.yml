@@ -1,0 +1,91 @@
+name: Build and Release Teacher Native
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Node dependencies
+        shell: pwsh
+        run: npm install
+
+      - name: Install native build tools
+        shell: pwsh
+        run: |
+          choco install nsis nuget.commandline -y --no-progress
+
+      - name: Restore WebView2 SDK
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\webview2" | Out-Null
+          nuget install Microsoft.Web.WebView2 -Version 1.0.1210.39 -OutputDirectory "$env:RUNNER_TEMP\webview2" -DirectDownload -NonInteractive
+          $packageRoot = Join-Path "$env:RUNNER_TEMP\webview2" "Microsoft.Web.WebView2.1.0.1210.39"
+          if (-not (Test-Path (Join-Path $packageRoot "build\native\include\WebView2.h"))) {
+            throw "WebView2 SDK restore failed: $packageRoot"
+          }
+          "WEBVIEW2_PACKAGE_ROOT=$packageRoot" >> $env:GITHUB_ENV
+
+      - name: Configure native project
+        shell: pwsh
+        run: cmake -S . -B build/native-vs -G "Visual Studio 17 2022" -A x64 -DWEBVIEW2_PACKAGE_ROOT="$env:WEBVIEW2_PACKAGE_ROOT"
+
+      - name: Build native project
+        shell: pwsh
+        run: cmake --build build/native-vs --config Release
+
+      - name: Stage native package
+        shell: pwsh
+        run: npm run package:teacher-native
+
+      - name: Build installer
+        shell: pwsh
+        run: npm run package:teacher-native-installer
+
+      - name: Prepare release metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $branch = "${{ github.ref_name }}" -replace '[^A-Za-z0-9._-]', '-'
+          $tag = "teacher-native-$branch-${{ github.run_number }}"
+          $installer = Get-ChildItem "dist\installer\*.exe" | Select-Object -First 1
+          if (-not $installer) {
+            throw "Installer artifact was not generated."
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "name=LumeSync Teacher Native $tag" >> $env:GITHUB_OUTPUT
+          "installer=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumesync-teacher-native-installer
+          path: dist/installer/*.exe
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.name }}
+          files: ${{ steps.meta.outputs.installer }}
+          body: |
+            Automated LumeSync Teacher native Windows installer build.
+
+            Commit: ${{ github.sha }}
+            Branch: ${{ github.ref_name }}
+            Run: ${{ github.run_number }}

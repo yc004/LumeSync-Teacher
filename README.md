@@ -1,50 +1,33 @@
-# LumeSync Teacher
+﻿# LumeSync Teacher
 
-教师端桌面应用，负责课程文件管理、课堂控制和本地课堂服务。
+鏁欏笀绔闈㈠簲鐢紝璐熻矗璇剧▼鏂囦欢绠＄悊銆佽鍫傛帶鍒跺拰鏈湴璇惧爞鏈嶅姟銆?
+## 鍔熻兘姒傝
 
-## 功能概览
-
-- 启动桌面端控制台（Electron）。
-- 自动拉起本地教学服务（Express + Socket.io，默认端口 `3000`）。
-- 管理课程文件（导入/导出、文件夹组织、删除、刷新）。
-- 课堂控制与实时同步（选课、翻页、互动、标注、投票、收集学生提交）。
-- 支持日志目录打开、提交目录设置、系统托盘常驻。
-
-## 目录结构
+- 鍚姩妗岄潰绔帶鍒跺彴锛圗lectron锛夈€?- 鑷姩鎷夎捣鏈湴鏁欏鏈嶅姟锛圗xpress + Socket.io锛岄粯璁ょ鍙?`3000`锛夈€?- 绠＄悊璇剧▼鏂囦欢锛堝鍏?瀵煎嚭銆佹枃浠跺す缁勭粐銆佸垹闄ゃ€佸埛鏂帮級銆?- 璇惧爞鎺у埗涓庡疄鏃跺悓姝ワ紙閫夎銆佺炕椤点€佷簰鍔ㄣ€佹爣娉ㄣ€佹姇绁ㄣ€佹敹闆嗗鐢熸彁浜わ級銆?- 鏀寔鏃ュ織鐩綍鎵撳紑銆佹彁浜ょ洰褰曡缃€佺郴缁熸墭鐩樺父椹汇€?
+## 鐩綍缁撴瀯
 
 ```text
-electron/          # 教师端桌面主进程与 preload
-server/            # 本地课堂服务（API + Socket）
-packages/          # engine/runtime-control/render-engine
-common/            # 公共 Electron 配置与日志能力
-shared/public/     # 课程静态资源目录（默认）
-submissions/       # 学生提交默认落盘目录
-scripts/           # 启动脚本
+electron/          # 鏁欏笀绔闈富杩涚▼涓?preload
+server/            # 鏈湴璇惧爞鏈嶅姟锛圓PI + Socket锛?packages/          # engine/runtime-control/render-engine
+common/            # 鍏叡 Electron 閰嶇疆涓庢棩蹇楄兘鍔?shared/public/     # 璇剧▼闈欐€佽祫婧愮洰褰曪紙榛樿锛?submissions/       # 瀛︾敓鎻愪氦榛樿钀界洏鐩綍
+scripts/           # 鍚姩鑴氭湰
 ```
 
-## 快速开始
-
+## 蹇€熷紑濮?
 ```bash
-npm install
-npm run start
+pnpm install
+pnpm run start
 ```
 
-启动链路：
+鍚姩閾捐矾锛?
+1. `scripts/start-electron.js` 鍚姩 Electron銆?2. `electron/main.js` 妫€鏌?`3000` 绔彛鍙敤鎬с€?3. 鑻ョ鍙ｇ┖闂诧紝鎷夎捣 `server/index.js`锛涜嫢宸叉湁鍋ュ悍鏈嶅姟鍒欏鐢ㄣ€?4. 鎵撳紑 `http://127.0.0.1:3000` 浣滀负鏁欏笀绔富鐣岄潰銆?
+## 甯哥敤鍛戒护
 
-1. `scripts/start-electron.js` 启动 Electron。
-2. `electron/main.js` 检查 `3000` 端口可用性。
-3. 若端口空闲，拉起 `server/index.js`；若已有健康服务则复用。
-4. 打开 `http://127.0.0.1:3000` 作为教师端主界面。
+- `pnpm run start`锛氬惎鍔ㄦ暀甯堢妗岄潰搴旂敤锛堟帹鑽愶級
+- `pnpm run start:server`锛氫粎鍚姩鏈湴璇惧爞鏈嶅姟锛堜究浜?API 鑱旇皟锛?- `pnpm run build`锛氭墦鍖呮闈㈠畨瑁呭寘锛坋lectron-builder锛?
+## 鏈嶅姟鎺ュ彛
 
-## 常用命令
-
-- `npm run start`：启动教师端桌面应用（推荐）
-- `npm run start:server`：仅启动本地课堂服务（便于 API 联调）
-- `npm run build`：打包桌面安装包（electron-builder）
-
-## 服务接口
-
-API 同时挂载在 `/api` 与 `/api/teacher`，常用端点：
+API 鍚屾椂鎸傝浇鍦?`/api` 涓?`/api/teacher`锛屽父鐢ㄧ鐐癸細
 
 - `GET /api/health`
 - `GET /api/courses`
@@ -57,44 +40,38 @@ API 同时挂载在 `/api` 与 `/api/teacher`，常用端点：
 - `GET /api/students`
 - `GET /api/student-log`
 
-## 关键环境变量（server）
-
-| 变量 | 默认值 | 说明 |
+## 鍏抽敭鐜鍙橀噺锛坰erver锛?
+| 鍙橀噺 | 榛樿鍊?| 璇存槑 |
 | --- | --- | --- |
-| `PORT` | `3000` | 本地服务端口 |
-| `STATIC_DIR` | `shared/public` | 静态资源根目录 |
-| `LUMESYNC_PUBLIC_DIR` | `shared/public` | 课程与静态资源目录 |
-| `LUMESYNC_COURSES_DIR` | `<public>/courses` | 课程文件目录 |
-| `LUMESYNC_SUBMISSIONS_DIR` | `./submissions` | 学生提交目录 |
-| `LUMESYNC_SUBMISSIONS_CONFIG` | `./submissions-config.json` | 提交目录配置文件 |
+| `PORT` | `3000` | 鏈湴鏈嶅姟绔彛 |
+| `STATIC_DIR` | `shared/public` | 闈欐€佽祫婧愭牴鐩綍 |
+| `LUMESYNC_PUBLIC_DIR` | `shared/public` | 璇剧▼涓庨潤鎬佽祫婧愮洰褰?|
+| `LUMESYNC_COURSES_DIR` | `<public>/courses` | 璇剧▼鏂囦欢鐩綍 |
+| `LUMESYNC_SUBMISSIONS_DIR` | `./submissions` | 瀛︾敓鎻愪氦鐩綍 |
+| `LUMESYNC_SUBMISSIONS_CONFIG` | `./submissions-config.json` | 鎻愪氦鐩綍閰嶇疆鏂囦欢 |
 
-说明：使用 `npm run start` 时，上述核心变量会由 `electron/main.js` 自动注入，无需手动配置。
-
-## 打包发布
+璇存槑锛氫娇鐢?`pnpm run start` 鏃讹紝涓婅堪鏍稿績鍙橀噺浼氱敱 `electron/main.js` 鑷姩娉ㄥ叆锛屾棤闇€鎵嬪姩閰嶇疆銆?
+## 鎵撳寘鍙戝竷
 
 ```bash
-npm run build
+pnpm run build
 ```
 
-- 打包配置：`electron-builder.json`
-- 产物目录：`../../dist/teacher`
-- Windows 目标：`nsis`（`x64`）
+- 鎵撳寘閰嶇疆锛歚electron-builder.json`
+- 浜х墿鐩綍锛歚../../dist/teacher`
+- Windows 鐩爣锛歚nsis`锛坄x64`锛?
+## 甯歌闂
 
-## 常见问题
-
-1. 教师端启动提示端口被占用
-端口 `3000` 被非 LumeSync 进程占用时，应用会拒绝启动。先释放端口后重试。
-
-2. 页面一直加载失败
-优先检查本地服务健康接口 `http://127.0.0.1:3000/api/health`，再查看日志目录（应用内“打开日志目录”）。
-
-3. 导入课程后看不到
-确认文件扩展名为 `.lume/.tsx/.ts/.jsx/.js/.pdf`，并在界面执行刷新课程列表。
-
-## 相关文档
+1. 鏁欏笀绔惎鍔ㄦ彁绀虹鍙ｈ鍗犵敤
+绔彛 `3000` 琚潪 LumeSync 杩涚▼鍗犵敤鏃讹紝搴旂敤浼氭嫆缁濆惎鍔ㄣ€傚厛閲婃斁绔彛鍚庨噸璇曘€?
+2. 椤甸潰涓€鐩村姞杞藉け璐?浼樺厛妫€鏌ユ湰鍦版湇鍔″仴搴锋帴鍙?`http://127.0.0.1:3000/api/health`锛屽啀鏌ョ湅鏃ュ織鐩綍锛堝簲鐢ㄥ唴鈥滄墦寮€鏃ュ織鐩綍鈥濓級銆?
+3. 瀵煎叆璇剧▼鍚庣湅涓嶅埌
+纭鏂囦欢鎵╁睍鍚嶄负 `.lume/.tsx/.ts/.jsx/.js/.pdf`锛屽苟鍦ㄧ晫闈㈡墽琛屽埛鏂拌绋嬪垪琛ㄣ€?
+## 鐩稿叧鏂囨。
 
 - [server/src/README.md](./server/src/README.md)
 - [CONTRIBUTING.md](./CONTRIBUTING.md)
 - [SECURITY.md](./SECURITY.md)
 - [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
 - [LICENSE](./LICENSE)
+

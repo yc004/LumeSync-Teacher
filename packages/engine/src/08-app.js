@@ -14,6 +14,98 @@ const ensurePdfJsLoaded = async () => {
     return true;
 };
 
+const IDENTITY_CLIENT_ID_KEY = 'lumesync_host_client_id';
+
+const normalizeRole = (role) => {
+    const r = String(role || '').trim().toLowerCase();
+    if (r === 'host' || r === 'teacher') return 'host';
+    if (r === 'viewer' || r === 'student') return 'viewer';
+    return '';
+};
+
+const pickIdentityFromInjected = () => {
+    const src = window.__LumeSyncIdentity || null;
+    if (!src || typeof src !== 'object') return null;
+    return {
+        role: normalizeRole(src.role),
+        token: src.token ? String(src.token) : '',
+        clientId: src.clientId ? String(src.clientId) : ''
+    };
+};
+
+const pickIdentityFromQuery = () => {
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        const role = normalizeRole(params.get('role'));
+        const token = params.get('token') || '';
+        const clientId = params.get('clientId') || '';
+        return { role, token, clientId };
+    } catch (_) {
+        return { role: '', token: '', clientId: '' };
+    }
+};
+
+const cleanupSensitiveIdentityQuery = () => {
+    try {
+        const url = new URL(window.location.href);
+        let changed = false;
+        for (const key of ['token', 'role', 'clientId']) {
+            if (url.searchParams.has(key)) {
+                url.searchParams.delete(key);
+                changed = true;
+            }
+        }
+        if (changed) {
+            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+        }
+    } catch (_) {}
+};
+
+const getOrCreateHostClientId = () => {
+    try {
+        const existing = localStorage.getItem(IDENTITY_CLIENT_ID_KEY);
+        if (existing) return existing;
+        const next = `host-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+        localStorage.setItem(IDENTITY_CLIENT_ID_KEY, next);
+        return next;
+    } catch (_) {
+        return `host-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+};
+
+const prepareSocketAuth = async () => {
+    const injected = pickIdentityFromInjected() || {};
+    const query = pickIdentityFromQuery() || {};
+
+    const rawRole = injected.role || query.role || '';
+    const declaredRole = normalizeRole(rawRole);
+    const rawToken = injected.token || query.token || '';
+    const rawClientId = injected.clientId || query.clientId || '';
+
+    let token = rawToken;
+    let clientId = rawClientId || getOrCreateHostClientId();
+
+    if (!token && window.teacherHost?.bootstrapSession) {
+        const session = await window.teacherHost.bootstrapSession();
+        token = session?.token ? String(session.token) : '';
+        clientId = session?.clientId ? String(session.clientId) : clientId;
+    }
+
+    if (!token) {
+        return null;
+    }
+
+    if (declaredRole && declaredRole !== 'host') {
+        throw new Error('Teacher console must connect as host');
+    }
+
+    return {
+        role: 'host',
+        token,
+        clientId
+    };
+};
+
 const getPdfDoc = (pdfUrl) => {
     if (!window.__LumeSyncPdfDocCache) window.__LumeSyncPdfDocCache = new Map();
     const cache = window.__LumeSyncPdfDocCache;
@@ -103,6 +195,7 @@ function PdfPageSlide({ pdfUrl, pageNumber }) {
 function ClassroomApp() {
     const [isHost, setIsHost] = useState(false);
     const [roleAssigned, setRoleAssigned] = useState(false);
+    const [identityError, setIdentityError] = useState('');
     const [courseCatalog, setCourseCatalog] = useState([]);
     const [currentCourseId, setCurrentCourseId] = useState(null);
     const [currentCourseData, setCurrentCourseData] = useState(null);
@@ -169,125 +262,145 @@ function ClassroomApp() {
     };
 
     useEffect(() => {
-        socketRef.current = window.io();
-        // 将 socket 引用暴露到全局，供 CourseGlobalContext.syncInteraction 使用
-        window.socketRef = socketRef;
+        let disposed = false;
 
-        socketRef.current.on('role-assigned', (data) => {
-            setIsHost(data.role === 'host');
-            // 处理 courseCatalog 可能是对象 {courses: [...], folders: [...]} 或数组的情况
-            let catalog = data.courseCatalog || [];
-            if (!Array.isArray(catalog) && catalog.courses) {
-                // 如果是完整对象，保持完整对象格式
-                catalog = catalog;
-            } else if (Array.isArray(catalog) && !catalog.folders) {
-                // 如果是数组且没有 folders 属性，转换为完整对象格式
-                catalog = { courses: catalog, folders: data.folders || [] };
-            }
-            setCourseCatalog(catalog);
-            courseCatalogRef.current = catalog;
-            setCurrentCourseId(data.currentCourseId);
-            setRoleAssigned(true);
-
-            // 存储学生信息（从服务器座位表获取）
-            if (data.role !== 'host') {
-                setStudentInfo({
-                    ip: data.clientIp || '',
-                    name: data.studentInfo?.name || '',
-                    studentId: data.studentInfo?.studentId || ''
-                });
-            }
-
-            if (data.role !== 'host' && data.hostSettings) {
-                setSettings(s => ({ ...s, ...data.hostSettings }));
-                const fs = data.hostSettings?.forceFullscreen ?? true;
-                window.electronAPI?.setFullscreen(fs);
-            }
-
-            if (data.currentCourseId) {
-                setInitialSlideIndex(data.currentSlideIndex || 0);
-                loadCourse(data.currentCourseId, catalog);
-                if (data.role !== 'host') {
-                    const fs = data.hostSettings?.forceFullscreen ?? true;
-                    window.electronAPI?.classStarted({ forceFullscreen: fs });
+        const setupSocket = async () => {
+            let auth;
+            try {
+                auth = await prepareSocketAuth();
+            } catch (err) {
+                console.error('[identity] init failed:', err);
+                if (!disposed) {
+                    setIdentityError(err?.message || String(err));
+                    setRoleAssigned(false);
                 }
+                return;
             }
+            if (disposed) return;
 
-            if (data.role === 'host') {
-                socketRef.current.emit('get-student-count');
-                socketRef.current.emit('host-settings', settingsRef.current);
-                if (!studentCountPollRef.current) {
-                    studentCountPollRef.current = setInterval(() => {
-                        try {
-                            if (socketRef.current && socketRef.current.connected) {
-                                socketRef.current.emit('get-student-count');
-                            }
-                        } catch (_) {}
-                    }, 3000);
-                }
-            } else {
-                if (studentCountPollRef.current) {
-                    clearInterval(studentCountPollRef.current);
-                    studentCountPollRef.current = null;
-                }
-            }
-        });
+            socketRef.current = auth ? window.io({ auth }) : window.io();
+            if (auth) cleanupSensitiveIdentityQuery();
+            window.socketRef = socketRef;
 
-        socketRef.current.on('student-status', (data) => { setStudentCount(data.count); });
-
-        socketRef.current.on('host-settings', (s) => {
-            setSettings(prev => {
-                const next = { ...prev, ...s };
-                window.electronAPI?.setFullscreen(next.forceFullscreen);
-                return next;
+            socketRef.current.on('identity-rejected', (data) => {
+                const msg = data?.message || data?.code || 'Identity verification failed';
+                setIdentityError(msg);
+                setRoleAssigned(false);
             });
-        });
 
-        socketRef.current.on('set-admin-password', (data) => {
-            window.electronAPI?.setAdminPassword?.(data.hash);
-        });
+            socketRef.current.on('role-assigned', (data) => {
+                setIdentityError('');
+                setIsHost(data.role === 'host');
+                let catalog = data.courseCatalog || [];
+                if (!Array.isArray(catalog) && catalog.courses) {
+                    catalog = catalog;
+                } else if (Array.isArray(catalog) && !catalog.folders) {
+                    catalog = { courses: catalog, folders: data.folders || [] };
+                }
+                setCourseCatalog(catalog);
+                courseCatalogRef.current = catalog;
+                setCurrentCourseId(data.currentCourseId);
+                setRoleAssigned(true);
 
-        socketRef.current.on('course-changed', (data) => {
-            setCurrentCourseId(data.courseId);
-            setInitialSlideIndex(data.slideIndex || 0);
-            loadCourse(data.courseId, courseCatalogRef.current);
-            const fs = data.hostSettings?.forceFullscreen ?? true;
-            if (data.hostSettings) setSettings(s => ({ ...s, ...data.hostSettings }));
-            window.electronAPI?.classStarted({ forceFullscreen: fs });
-        });
+                if (data.role !== 'host') {
+                    setStudentInfo({
+                        ip: data.clientIp || '',
+                        name: data.studentInfo?.name || '',
+                        studentId: data.studentInfo?.studentId || ''
+                    });
+                }
 
-        socketRef.current.on('course-ended', () => {
-            setCurrentCourseId(null);
-            setCurrentCourseData(null);
-            window.CourseData = null;
-            window.CameraManager.release();
-            if (window._onCamActive) window._onCamActive(false);
-            window.electronAPI?.classEnded();
-        });
+                if (data.role !== 'host' && data.hostSettings) {
+                    setSettings(s => ({ ...s, ...data.hostSettings }));
+                    const fs = data.hostSettings?.forceFullscreen ?? true;
+                    window.electronAPI?.setFullscreen(fs);
+                }
 
-        socketRef.current.on('course-catalog-updated', (data) => {
-            // 处理 data.courses 可能是对象 {courses: [...], folders: [...]} 或数组的情况
-            let catalog = data.courses || [];
-            if (!Array.isArray(catalog) && catalog.courses) {
-                // 如果是完整对象，保持完整对象格式
-                catalog = catalog;
-            } else if (Array.isArray(catalog) && !catalog.folders) {
-                // 如果是数组且没有 folders 属性，转换为完整对象格式
-                catalog = { courses: catalog, folders: data.folders || [] };
-            }
-            setCourseCatalog(catalog);
-            courseCatalogRef.current = catalog;
-        });
+                if (data.currentCourseId) {
+                    setInitialSlideIndex(data.currentSlideIndex || 0);
+                    loadCourse(data.currentCourseId, catalog);
+                    if (data.role !== 'host') {
+                        const fs = data.hostSettings?.forceFullscreen ?? true;
+                        window.electronAPI?.classStarted({ forceFullscreen: fs });
+                    }
+                }
 
-        socketRef.current.on('student-log-entry', (entry) => {
-            setSharedStudentLog(prev => [...prev, entry].slice(-500));
-        });
+                if (data.role === 'host') {
+                    socketRef.current.emit('get-student-count');
+                    socketRef.current.emit('host-settings', settingsRef.current);
+                    if (!studentCountPollRef.current) {
+                        studentCountPollRef.current = setInterval(() => {
+                            try {
+                                if (socketRef.current && socketRef.current.connected) {
+                                    socketRef.current.emit('get-student-count');
+                                }
+                            } catch (_) {}
+                        }, 3000);
+                    }
+                } else {
+                    if (studentCountPollRef.current) {
+                        clearInterval(studentCountPollRef.current);
+                        studentCountPollRef.current = null;
+                    }
+                }
+            });
 
-        fetch('/api/student-log').then(r => r.json()).then(d => {
-            setSharedStudentLog(d.log || []);
-        }).catch(() => {});
+            socketRef.current.on('student-status', (data) => { setStudentCount(data.count); });
+
+            socketRef.current.on('host-settings', (s) => {
+                setSettings(prev => {
+                    const next = { ...prev, ...s };
+                    window.electronAPI?.setFullscreen(next.forceFullscreen);
+                    return next;
+                });
+            });
+
+            socketRef.current.on('set-admin-password', (data) => {
+                window.electronAPI?.setAdminPassword?.(data.hash);
+            });
+
+            socketRef.current.on('course-changed', (data) => {
+                setCurrentCourseId(data.courseId);
+                setInitialSlideIndex(data.slideIndex || 0);
+                loadCourse(data.courseId, courseCatalogRef.current);
+                const fs = data.hostSettings?.forceFullscreen ?? true;
+                if (data.hostSettings) setSettings(s => ({ ...s, ...data.hostSettings }));
+                window.electronAPI?.classStarted({ forceFullscreen: fs });
+            });
+
+            socketRef.current.on('course-ended', () => {
+                setCurrentCourseId(null);
+                setCurrentCourseData(null);
+                window.CourseData = null;
+                window.CameraManager.release();
+                if (window._onCamActive) window._onCamActive(false);
+                window.electronAPI?.classEnded();
+            });
+
+            socketRef.current.on('course-catalog-updated', (data) => {
+                let catalog = data.courses || [];
+                if (!Array.isArray(catalog) && catalog.courses) {
+                    catalog = catalog;
+                } else if (Array.isArray(catalog) && !catalog.folders) {
+                    catalog = { courses: catalog, folders: data.folders || [] };
+                }
+                setCourseCatalog(catalog);
+                courseCatalogRef.current = catalog;
+            });
+
+            socketRef.current.on('student-log-entry', (entry) => {
+                setSharedStudentLog(prev => [...prev, entry].slice(-500));
+            });
+
+            fetch('/api/student-log').then(r => r.json()).then(d => {
+                setSharedStudentLog(d.log || []);
+            }).catch(() => {});
+        };
+
+        setupSocket();
 
         return () => {
+            disposed = true;
             if (studentCountPollRef.current) {
                 clearInterval(studentCountPollRef.current);
                 studentCountPollRef.current = null;
@@ -576,6 +689,16 @@ function ClassroomApp() {
     const handleEndCourse = () => {
         if (socketRef.current && isHost) socketRef.current.emit('end-course');
     };
+
+    if (identityError) {
+        return (
+            <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white select-none px-8">
+                <i className="fas fa-circle-exclamation text-5xl text-red-400 mb-6"></i>
+                <h2 className="text-2xl tracking-widest font-bold">身份验证失败</h2>
+                <p className="text-slate-300 mt-3 text-center break-all">{identityError}</p>
+            </div>
+        );
+    }
 
     if (!roleAssigned) {
         return (

@@ -1,6 +1,12 @@
+set(LUMESYNC_TEACHER_ICON "${CMAKE_CURRENT_SOURCE_DIR}/../../shared/build/icon-teacher.ico")
+
 add_executable(LumeSyncTeacherShell WIN32
   src/main.cpp
   src/shell.rc
+)
+
+target_compile_definitions(LumeSyncTeacherShell PRIVATE
+  LUMESYNC_TEACHER_ICON="${LUMESYNC_TEACHER_ICON}"
 )
 
 target_link_libraries(LumeSyncTeacherShell

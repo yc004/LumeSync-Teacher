@@ -25,8 +25,8 @@ BrandingText "LumeSync Teacher"
 ShowInstDetails show
 ShowUninstDetails show
 
-!define MUI_ICON "..\..\shared\build\icon-teacher.ico"
-!define MUI_UNICON "..\..\shared\build\icon-teacher.ico"
+!define MUI_ICON "icon-teacher.ico"
+!define MUI_UNICON "icon-teacher.ico"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES

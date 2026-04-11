@@ -20,6 +20,10 @@ New-Item -ItemType Directory -Force -Path $OutputPath | Out-Null
 
 $MakensisCandidates = @(
   "makensis.exe",
+  (Join-Path $env:LOCALAPPDATA "electron-builder/Cache/nsis/nsis-3.0.4.1/makensis.exe"),
+  (Join-Path $env:LOCALAPPDATA "electron-builder/Cache/nsis/nsis-3.0.4.1/Bin/makensis.exe"),
+  (Join-Path $env:LOCALAPPDATA "electron-builder/Cache/nsis/nsis-3.0.4.1-nsis-3.0.4.1/makensis.exe"),
+  (Join-Path $env:LOCALAPPDATA "electron-builder/Cache/nsis/nsis-3.0.4.1-nsis-3.0.4.1/Bin/makensis.exe"),
   "C:/Program Files/NSIS/makensis.exe",
   "C:/Program Files (x86)/NSIS/makensis.exe"
 )

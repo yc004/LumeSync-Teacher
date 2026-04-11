@@ -17,7 +17,6 @@ $SharedBuildDir = Join-Path $RepoRoot "shared/build"
 $SharedAssetsDir = Join-Path $RepoRoot "shared/assets"
 $PackagesDir = Join-Path $RepoRoot "packages"
 $NodeModulesDir = Join-Path $RepoRoot "node_modules"
-$CommonDir = Join-Path $RepoRoot "common"
 
 if (-not (Test-Path $ShellExe)) {
   throw "Missing shell binary: $ShellExe"
@@ -37,8 +36,7 @@ foreach ($entry in @(
   @{ From = $SharedBuildDir; To = "shared/build" },
   @{ From = $SharedAssetsDir; To = "shared/assets" },
   @{ From = $PackagesDir; To = "packages" },
-  @{ From = $NodeModulesDir; To = "node_modules" },
-  @{ From = $CommonDir; To = "common" }
+  @{ From = $NodeModulesDir; To = "node_modules" }
 )) {
   if (Test-Path $entry.From) {
     $target = Join-Path $OutputRoot $entry.To

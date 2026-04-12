@@ -6,7 +6,7 @@
     <title>互动课堂 - AI 教学系统</title>
 
     <!-- 1. 引入 Tailwind CSS (优先局域网，自动缓存) -->
-    <script src="/lib/tailwindcss.js" onerror="this.src='https://cdn.tailwindcss.com'"></script>
+    <script src="/lib/tailwindcss.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -28,24 +28,24 @@
     </script>
 
     <!-- 2. 引入 FontAwesome 图标库 (优先局域网，自动缓存) -->
-    <link rel="stylesheet" href="/lib/fontawesome.all.min.css" onerror="this.href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'">
+    <link rel="stylesheet" href="/lib/fontawesome.all.min.css">
 
     <!-- 3. 引入 React 和 ReactDOM (优先局域网，自动缓存) -->
-    <script crossorigin src="/lib/react.development.js" onerror="this.src='https://unpkg.com/react@18/umd/react.development.js'"></script>
-    <script crossorigin src="/lib/react-dom.development.js" onerror="this.src='https://unpkg.com/react-dom@18/umd/react-dom.development.js'"></script>
+    <script crossorigin src="/lib/react.development.js"></script>
+    <script crossorigin src="/lib/react-dom.development.js"></script>
 
     <!-- 4. 引入 Babel (优先局域网，自动缓存) -->
-    <script src="/lib/babel.min.js" onerror="this.src='https://unpkg.com/@babel/standalone/babel.min.js'"></script>
+    <script src="/lib/babel.min.js"></script>
 
     <!-- 5. 引入 Socket.io 客户端 (由 Node.js 后端自动提供) -->
     <script src="/socket.io/socket.io.js"></script>
 
     <!-- 6. 引入 marked (Markdown 渲染) -->
-    <script src="/lib/marked.min.js" onerror="this.src='https://fastly.jsdelivr.net/npm/marked@9/marked.min.js'"></script>
+    <script src="/lib/marked.min.js"></script>
 
     <style>
         /* 全局强制样式，确保 body 和根容器完全覆盖并禁止滚动 */
-        html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+        html, body, #root-wrapper, #root { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
         
         /* 虚拟分辨率容器，用于始终提供 1280x720 以上的画布供 Tailwind 渲染 */
         #root-wrapper {
@@ -135,25 +135,8 @@
         window.addEventListener('DOMContentLoaded', updateContainerScale);
     </script>
 
-    <!-- 同步引擎模块（按依赖顺序加载） -->
-    <script type="text/babel" src="/engine/00-globals.js"></script>
-    <script type="text/babel" src="/engine/01-settings-panel.js"></script>
-    <script type="text/babel" src="/engine/02-classroom-view.js"></script>
-    <script type="text/babel" src="/engine/03-course-selector.js"></script>
-    <script type="text/babel" src="/engine/04-student-waiting.js"></script>
-    <script type="text/babel" src="/engine/05-sync-classroom.js"></script>
-    <script type="text/babel" src="/engine/06-resource-loader.js"></script>
-    <script type="text/babel" src="/engine/07-camera-manager.js"></script>
-    <script type="text/babel" src="/engine/08-app.js"></script>
-    <script type="text/babel" src="/engine/09-submissions-browser.js"></script>
-
-    <!-- 组件库 -->
-    <script type="text/babel" src="/engine/components/LogViewer.js"></script>
-    <script type="text/babel" src="/engine/components/WindowControls.js"></script>
-    <script type="text/babel" src="/engine/components/WebPageSlide.js"></script>
-    <script type="text/babel" src="/engine/components/SurveySlide.js"></script>
-    <script type="text/babel" src="/engine/components/VoteSlide.js"></script>
-
+    <!-- Teacher shell is precompiled on the Node side; only course files are compiled at runtime. -->
+    <script src="/teacher-app.js"></script>
 
 </body>
 </html>

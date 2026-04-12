@@ -11,11 +11,12 @@ $BuildRoot = Join-Path $RepoRoot $BuildDir
 $OutputRoot = Join-Path $RepoRoot $OutDir
 $ShellExe = Join-Path $BuildRoot "native/shell/$Configuration/LumeSyncTeacherShell.exe"
 $ServerDir = Join-Path $RepoRoot "server"
-$PublicDir = Join-Path $RepoRoot "public"
 $SharedPublicDir = Join-Path $RepoRoot "shared/public"
+$SharedTeacherShellDir = Join-Path $RepoRoot "shared/teacher-shell"
 $SharedBuildDir = Join-Path $RepoRoot "shared/build"
 $SharedAssetsDir = Join-Path $RepoRoot "shared/assets"
-$PackagesDir = Join-Path $RepoRoot "packages"
+$CoreDir = if ($env:LUMESYNC_CORE_DIR) { Resolve-Path $env:LUMESYNC_CORE_DIR } else { Resolve-Path (Join-Path $RepoRoot "../core") }
+$CorePackagesDir = Join-Path $CoreDir "packages"
 $NodeModulesDir = Join-Path $RepoRoot "node_modules"
 
 if (-not (Test-Path $ShellExe)) {
@@ -31,11 +32,11 @@ Copy-Item -Force $ShellExe (Join-Path $OutputRoot "LumeSyncTeacherShell.exe")
 
 foreach ($entry in @(
   @{ From = $ServerDir; To = "server" },
-  @{ From = $PublicDir; To = "public" },
   @{ From = $SharedPublicDir; To = "shared/public" },
+  @{ From = $SharedTeacherShellDir; To = "shared/teacher-shell" },
   @{ From = $SharedBuildDir; To = "shared/build" },
   @{ From = $SharedAssetsDir; To = "shared/assets" },
-  @{ From = $PackagesDir; To = "packages" },
+  @{ From = $CorePackagesDir; To = "core/packages" },
   @{ From = $NodeModulesDir; To = "node_modules" }
 )) {
   if (Test-Path $entry.From) {

@@ -1,4 +1,3 @@
-const React = window.React;
 const { useState, useEffect } = React;
 
 // 日志查看器组件

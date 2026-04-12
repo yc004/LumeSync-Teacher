@@ -2,7 +2,6 @@
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
 
 if (!process.env.LUMESYNC_HOST_TOKEN) {
@@ -13,6 +12,7 @@ if (!process.env.LUMESYNC_VIEWER_TOKEN_SECRET) {
 }
 
 const { config, initDirectories } = require('./src/config');
+const { buildTeacherBundles } = require('./src/teacher-shell-build');
 const {
     fontCacheCleaner,
     handleLibRequest,
@@ -32,23 +32,11 @@ const {
     setCourseCatalog
 } = require('./src/routes');
 const { scanCourses } = require('./src/courses');
+const { resolveCorePackagePath } = require('./src/core-paths');
 
-function resolveCorePackagePath(...segments) {
-    const candidates = [
-        path.join(__dirname, '../../core', ...segments),
-        path.join(__dirname, '../core', ...segments)
-    ];
-    for (const candidate of candidates) {
-        if (fs.existsSync(candidate)) {
-            return candidate;
-        }
-    }
-    return candidates[0];
-}
-
-const runtimeControl = require(resolveCorePackagePath('packages', 'runtime-control'));
-const { createViewerSessionToken, normalizeIp } = require(resolveCorePackagePath('packages', 'runtime-control', 'identity'));
-const renderEngine = require(path.join(__dirname, '../packages/render-engine'));
+const runtime = require('./src/socket');
+const { createViewerSessionToken, normalizeIp } = require(resolveCorePackagePath('runtime-control', 'identity'));
+const renderEngine = require(resolveCorePackagePath('render-engine'));
 
 const VIEWER_TOKEN_TTL_SEC = Number(process.env.LUMESYNC_VIEWER_TOKEN_TTL_SEC || 14400);
 const VIEWER_TOKEN_SECRET = String(process.env.LUMESYNC_VIEWER_TOKEN_SECRET || '');
@@ -63,7 +51,6 @@ function ensureClientId(input) {
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, config.socket);
-const runtime = runtimeControl;
 
 app.use(express.json(config.body));
 app.use(express.urlencoded({ extended: false }));
@@ -72,14 +59,31 @@ app.use('/components', express.static(path.join(config.cacheRoot, 'components'))
 
 initDirectories();
 
+try {
+    for (const bundleBuild of buildTeacherBundles({ publicRoot: config.cacheRoot })) {
+        if (!bundleBuild.skipped) {
+            console.log(`[teacher-server] built teacher bundle: ${bundleBuild.outputPath}`);
+        }
+    }
+} catch (err) {
+    console.warn('[teacher-server] failed to build teacher bundles:', err.message);
+}
+
 app.use(fontCacheCleaner);
 
 const engineDir = renderEngine.resolveEngineSrcDir();
 app.use('/engine', express.static(engineDir));
-app.use('/engine/src', express.static(engineDir));
 
 const staticDir = process.env.STATIC_DIR || config.cacheRoot;
+app.get(['/teacher-app.js', '/render-engine.js'], (_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+});
 app.use(express.static(staticDir));
+
+app.get('/favicon.ico', (_req, res) => {
+    res.status(204).end();
+});
 
 app.get('/lib/fonts', (_req, res) => {
     res.status(404).send('not found: fonts');

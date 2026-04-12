@@ -3,14 +3,18 @@
 // ========================================================
 function StudentWaitingRoom({ message, forceFullscreen = true }) {
     return (
-        <div className="flex flex-col h-screen bg-slate-900 text-white select-none">
+        <div className="flex flex-col h-full bg-slate-900 text-white select-none">
             {/* 顶栏 */}
-            <div className="flex items-center justify-between px-8 py-5 bg-slate-800 border-b border-slate-700" style={{WebkitAppRegion:'drag'}}>
+            <div
+                className="flex items-center justify-between px-8 py-5 bg-slate-800 border-b border-slate-700"
+                style={{WebkitAppRegion:'drag'}}
+                onMouseDown={(event) => window.__LumeSyncStartWindowDrag?.(event)}
+            >
                 <div className="flex items-center space-x-3">
                     <i className="fas fa-graduation-cap text-blue-400 text-2xl"></i>
                     <h1 className="text-2xl font-bold">学生端</h1>
                 </div>
-                <div className="flex items-center space-x-3" style={{WebkitAppRegion:'no-drag'}}>
+                <div className="flex items-center space-x-3" style={{WebkitAppRegion:'no-drag'}} data-window-control="true">
                     <span className="px-4 py-2 bg-green-500/20 text-green-400 rounded-full text-sm font-bold border border-green-500/30">
                         学生端 (观看)
                     </span>

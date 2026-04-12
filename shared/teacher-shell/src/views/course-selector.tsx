@@ -120,6 +120,19 @@ function FolderTreeNode({ folders, parentId, currentFolder, dragOverFolder, onFo
     );
 }
 
+const normalizeCourseCatalog = (catalog) => {
+    if (Array.isArray(catalog)) {
+        return { courses: catalog, folders: [] };
+    }
+    if (catalog && Array.isArray(catalog.courses)) {
+        return {
+            courses: catalog.courses,
+            folders: Array.isArray(catalog.folders) ? catalog.folders : []
+        };
+    }
+    return { courses: [], folders: [] };
+};
+
 function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, socket, settings, onSettingsChange, studentCount, studentLog }) {
     const [selectedId, setSelectedId] = useState(currentCourseId);
     const [showGuide, setShowGuide] = useState(false);
@@ -141,21 +154,27 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
     const [expandedFolders, setExpandedFolders] = useState(new Set());
 
     useEffect(() => {
-        if (Array.isArray(courses)) {
-            setCourseData({ courses, folders: [] });
-        } else if (courses && courses.courses && courses.folders) {
-            setCourseData({ courses: courses.courses, folders: courses.folders });
-        } else {
-            setCourseData({ courses: [], folders: [] });
+        let disposed = false;
+        const next = normalizeCourseCatalog(courses);
+        setCourseData(next);
+
+        if (next.courses.length === 0) {
+            fetch('/api/courses')
+                .then(res => res.json())
+                .then(data => {
+                    if (!disposed) setCourseData(normalizeCourseCatalog(data));
+                })
+                .catch(() => {});
         }
+
+        return () => { disposed = true; };
     }, [courses]);
 
     const handleSelect = (courseId) => { setSelectedId(courseId); };
 
     const handleStartCourse = () => {
-        if (selectedId && socket) {
-            socket.emit('select-course', { courseId: selectedId });
-        }
+        if (!selectedId) return;
+        onSelectCourse?.(selectedId, courseData);
     };
 
     const handleDownloadSkill = () => {
@@ -548,13 +567,17 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
     }, []);
 
     return (
-        <div className="flex flex-col h-screen bg-slate-900 text-white overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0" style={{WebkitAppRegion:'drag'}}>
+        <div className="flex flex-col h-full bg-slate-900 text-white overflow-hidden">
+            <div
+                className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0"
+                style={{WebkitAppRegion:'drag'}}
+                onMouseDown={(event) => window.__LumeSyncStartWindowDrag?.(event)}
+            >
                 <div className="flex items-center space-x-2">
                     <i className="fas fa-chalkboard-teacher text-blue-400 text-xl"></i>
                     <h1 className="text-xl font-bold">教师控制台</h1>
                 </div>
-                <div className="flex items-center space-x-2" style={{WebkitAppRegion:'no-drag'}}>
+                <div className="flex items-center space-x-2" style={{WebkitAppRegion:'no-drag'}} data-window-control="true">
                     <button
                         onClick={() => setShowClassroomView(true)}
                         className="px-3 py-1.5 bg-purple-500/20 text-purple-300 rounded-full text-xs font-bold border border-purple-500/30 flex items-center hover:bg-purple-500/30 transition-colors"

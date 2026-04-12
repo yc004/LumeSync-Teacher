@@ -303,7 +303,7 @@ function SubmissionsBrowser({ courses, selectedCourseId: initialCourseId, onClos
     };
 
     return (
-        <div className="flex flex-col h-screen bg-slate-900 text-white overflow-hidden">
+        <div className="flex flex-col h-full bg-slate-900 text-white overflow-hidden">
             {/* 顶栏 */}
             <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0">
                 <div className="flex items-center space-x-2">

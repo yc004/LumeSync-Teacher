@@ -3,28 +3,18 @@
     "name": "高一二班",
     "seats": [
       {
-        "id": "seat-1774667660708-192.168.1.73",
+        "id": "seat-1776062378443-192.168.1.73",
         "ip": "192.168.1.73",
-        "name": "ABC",
-        "row": 2,
-        "col": 4,
-        "studentId": ""
+        "name": "",
+        "row": 1,
+        "col": 1
       }
     ],
     "podiumAtTop": false
   },
   "classroom-1774918307228": {
     "name": "八年级三班",
-    "seats": [
-      {
-        "id": "seat-1774918540614-192.168.43.24",
-        "ip": "192.168.43.24",
-        "name": "AAA",
-        "row": 4,
-        "col": 1,
-        "studentId": ""
-      }
-    ],
-    "podiumAtTop": true
+    "seats": [],
+    "podiumAtTop": false
   }
 }

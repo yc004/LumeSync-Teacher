@@ -34,6 +34,18 @@ using lumesync::TeacherWindowSettings;
 
 constexpr wchar_t kMainWindowClassName[] = L"LumeSyncTeacherShellWindow";
 constexpr wchar_t kMainInstanceMutex[] = L"Global\\LumeSyncTeacherShell.Main";
+constexpr int kMinTeacherWindowWidth = 1360;
+constexpr int kMinTeacherWindowHeight = 860;
+constexpr int kMinClassroomWindowWidth = 1560;
+constexpr int kMinClassroomWindowHeight = 980;
+
+struct StartupWindowOptions {
+  bool childWindow = false;
+  std::wstring mode;
+  std::wstring title = L"LumeSync Teacher";
+  int width = 0;
+  int height = 0;
+};
 
 class TeacherShellApp;
 TeacherShellApp* g_app = nullptr;
@@ -87,6 +99,73 @@ RECT DefaultWindowRect() {
   const int x = workArea.left + max(0, (availableWidth - width) / 2);
   const int y = workArea.top + max(0, (availableHeight - height) / 2);
   return RECT{x, y, x + width, y + height};
+}
+
+RECT CenteredWindowRect(int requestedWidth, int requestedHeight) {
+  RECT workArea = {};
+  SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0);
+  const int availableWidth = workArea.right - workArea.left;
+  const int availableHeight = workArea.bottom - workArea.top;
+  const int targetWidth = max(requestedWidth, 720);
+  const int targetHeight = max(requestedHeight, 540);
+
+  int width = targetWidth;
+  int height = targetHeight;
+  if (width > availableWidth || height > availableHeight) {
+    const double widthScale = static_cast<double>(availableWidth) / static_cast<double>(width);
+    const double heightScale = static_cast<double>(availableHeight) / static_cast<double>(height);
+    const double scale = min(widthScale, heightScale);
+    width = max(720, static_cast<int>(width * scale));
+    height = max(540, static_cast<int>(height * scale));
+    if (width > availableWidth) width = availableWidth;
+    if (height > availableHeight) height = availableHeight;
+  }
+
+  const int x = workArea.left + max(0, (availableWidth - width) / 2);
+  const int y = workArea.top + max(0, (availableHeight - height) / 2);
+  return RECT{x, y, x + width, y + height};
+}
+
+SIZE MinimumWindowSizeForMode(const std::wstring& mode) {
+  if (mode == L"classroom") {
+    return SIZE{ kMinClassroomWindowWidth, kMinClassroomWindowHeight };
+  }
+  return SIZE{ kMinTeacherWindowWidth, kMinTeacherWindowHeight };
+}
+
+std::wstring QuoteCommandArg(const std::wstring& value) {
+  std::wstring escaped = L"\"";
+  for (const wchar_t ch : value) {
+    if (ch == L'"') escaped += L"\\\"";
+    else escaped.push_back(ch);
+  }
+  escaped += L"\"";
+  return escaped;
+}
+
+StartupWindowOptions ParseStartupWindowOptions() {
+  StartupWindowOptions options;
+  int argc = 0;
+  LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+  if (!argv) return options;
+
+  for (int index = 1; index < argc; ++index) {
+    const std::wstring arg = argv[index] ? argv[index] : L"";
+    if (arg == L"--child-window") {
+      options.childWindow = true;
+    } else if (arg == L"--window-mode" && index + 1 < argc) {
+      options.mode = argv[++index] ? argv[index] : L"";
+    } else if (arg == L"--window-title" && index + 1 < argc) {
+      options.title = argv[++index] ? argv[index] : L"";
+    } else if (arg == L"--window-width" && index + 1 < argc) {
+      options.width = _wtoi(argv[++index] ? argv[index] : L"0");
+    } else if (arg == L"--window-height" && index + 1 < argc) {
+      options.height = _wtoi(argv[++index] ? argv[index] : L"0");
+    }
+  }
+
+  LocalFree(argv);
+  return options;
 }
 
 std::optional<std::filesystem::path> FindUiAsset(const std::wstring& fileName) {
@@ -206,7 +285,7 @@ BootstrapSessionResult BootstrapHostSession(const TeacherConfig& config) {
     return result;
   }
 
-  HINTERNET connect = WinHttpConnect(session, config.teacherIp.c_str(), static_cast<INTERNET_PORT>(config.port), 0);
+  HINTERNET connect = WinHttpConnect(session, L"127.0.0.1", static_cast<INTERNET_PORT>(config.port), 0);
   if (!connect) {
     result.error = L"WinHttpConnect failed";
     WinHttpCloseHandle(session);
@@ -322,6 +401,15 @@ std::wstring HostApiScript() {
     minimizeWindow: () => send('minimizeWindow'),
     maximizeWindow: () => send('maximizeWindow'),
     closeWindow: () => send('closeWindow'),
+    openWindow: (url, options) => send('openWindow', {
+      mode: typeof options?.mode === 'string' ? options.mode : '',
+      width: Number(options?.width) || 0,
+      height: Number(options?.height) || 0,
+      title: typeof options?.title === 'string' ? options.title : ''
+    }),
+    beginWindowDrag: (payload) => send('beginWindowDrag', payload || {}),
+    updateWindowDrag: (payload) => send('updateWindowDrag', payload || {}),
+    endWindowDrag: () => send('endWindowDrag'),
     onWindowMaximized: (callback) => { if (typeof callback === 'function') listeners.maximized.add(callback); },
     onWindowUnmaximized: (callback) => { if (typeof callback === 'function') listeners.unmaximized.add(callback); },
     removeWindowMaximizedListener: (callback) => listeners.maximized.delete(callback),
@@ -329,6 +417,8 @@ std::wstring HostApiScript() {
   };
   window.teacherHost = api;
   window.electronAPI = Object.assign({}, window.electronAPI || {}, api);
+  window.openWindow = api.openWindow;
+  window.closeWindow = api.closeWindow;
   window.chrome.webview.addEventListener('message', (event) => {
     const message = event.data || {};
     if (message.kind === 'window-maximized') {
@@ -339,6 +429,10 @@ std::wstring HostApiScript() {
   });
 })();
 )JS";
+}
+
+std::wstring WindowModeScript(const std::wstring& mode) {
+  return L"window.__LumeSyncWindowMode = \"" + lumesync::JsonEscape(mode.empty() ? L"main" : mode) + L"\";";
 }
 
 class TeacherShellApp {
@@ -370,8 +464,8 @@ class TeacherShellApp {
   };
 
  public:
-  explicit TeacherShellApp(HINSTANCE instance)
-      : instance_(instance), config_(lumesync::LoadConfig()), settings_(lumesync::LoadWindowSettings()) {
+  explicit TeacherShellApp(HINSTANCE instance, const StartupWindowOptions& startupOptions)
+      : instance_(instance), config_(lumesync::LoadConfig()), settings_(lumesync::LoadWindowSettings()), startupOptions_(startupOptions) {
     g_app = this;
   }
 
@@ -393,12 +487,14 @@ class TeacherShellApp {
       return false;
     }
 
-    const RECT rect = DefaultWindowRect();
+    const RECT rect = (startupOptions_.width > 0 && startupOptions_.height > 0)
+        ? CenteredWindowRect(startupOptions_.width, startupOptions_.height)
+        : DefaultWindowRect();
     hwnd_ = CreateWindowExW(
         0,
         kMainWindowClassName,
-        L"LumeSync Teacher",
-        WS_OVERLAPPEDWINDOW,
+        startupOptions_.title.empty() ? L"LumeSync Teacher" : startupOptions_.title.c_str(),
+        WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_CLIPCHILDREN,
         rect.left,
         rect.top,
         rect.right - rect.left,
@@ -450,6 +546,14 @@ class TeacherShellApp {
         ResizeBrowser();
         NotifyWindowState();
         return 0;
+      case WM_GETMINMAXINFO: {
+        auto* info = reinterpret_cast<MINMAXINFO*>(lParam);
+        if (!info) return 0;
+        const SIZE minSize = MinimumWindowSizeForMode(startupOptions_.mode);
+        info->ptMinTrackSize.x = minSize.cx;
+        info->ptMinTrackSize.y = minSize.cy;
+        return 0;
+      }
       case WM_CLOSE:
         DestroyWindow(hwnd_);
         return 0;
@@ -496,7 +600,6 @@ class TeacherShellApp {
 
   bool StartLocalServerIfNeeded() {
     config_ = lumesync::LoadConfig();
-    if (!IsLoopbackHost(config_.teacherIp)) return true;
     if (WaitForLocalServer(200)) return true;
     if (serverProcess_.running()) return WaitForLocalServer(8000);
 
@@ -608,7 +711,14 @@ class TeacherShellApp {
         HostApiScript().c_str(),
         Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
             [this](HRESULT, LPCWSTR) -> HRESULT {
-              NavigateTeacher();
+              webview_->AddScriptToExecuteOnDocumentCreated(
+                  WindowModeScript(startupOptions_.mode).c_str(),
+                  Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
+                      [this](HRESULT, LPCWSTR) -> HRESULT {
+                        NavigateTeacher();
+                        return S_OK;
+                      })
+                      .Get());
               return S_OK;
             })
             .Get());
@@ -673,10 +783,10 @@ class TeacherShellApp {
     const auto id = lumesync::JsonStringField(json, L"id").value_or(L"");
     const auto payload = lumesync::JsonObjectField(json, L"payload").value_or(L"{}");
     if (kind == L"rpc") HandleRpc(id, *action, payload);
-    else HandleEvent(*action);
+    else HandleEvent(*action, payload);
   }
 
-  void HandleEvent(const std::wstring& action) {
+  void HandleEvent(const std::wstring& action, const std::wstring& payload = L"{}") {
     if (action == L"toggleDevTools") {
       OpenDevTools();
     } else if (action == L"minimizeWindow") {
@@ -685,7 +795,71 @@ class TeacherShellApp {
       ShowWindow(hwnd_, IsZoomed(hwnd_) ? SW_RESTORE : SW_MAXIMIZE);
     } else if (action == L"closeWindow") {
       PostMessageW(hwnd_, WM_CLOSE, 0, 0);
+    } else if (action == L"openWindow") {
+      OpenChildWindow(payload);
+    } else if (action == L"beginWindowDrag") {
+      BeginWindowDrag(payload);
+    } else if (action == L"updateWindowDrag") {
+      UpdateWindowDrag(payload);
+    } else if (action == L"endWindowDrag") {
+      EndWindowDrag();
     }
+  }
+
+  void BeginWindowDrag(const std::wstring& payload) {
+    UNREFERENCED_PARAMETER(payload);
+    if (!hwnd_) return;
+    SetForegroundWindow(hwnd_);
+    ReleaseCapture();
+    SendMessageW(hwnd_, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+  }
+
+  void UpdateWindowDrag(const std::wstring& payload) {
+    UNREFERENCED_PARAMETER(payload);
+  }
+
+  void EndWindowDrag() {
+  }
+
+  void OpenChildWindow(const std::wstring& payload) {
+    const std::wstring requestedMode = lumesync::JsonStringField(payload, L"mode").value_or(L"");
+    if (requestedMode.empty()) return;
+
+    std::wstring commandLine = QuoteCommandArg(ExePath().wstring()) + L" --child-window --window-mode " + QuoteCommandArg(requestedMode);
+
+    const std::wstring title = lumesync::JsonStringField(payload, L"title").value_or(L"");
+    if (!title.empty()) commandLine += L" --window-title " + QuoteCommandArg(title);
+
+    const int width = lumesync::JsonIntField(payload, L"width").value_or(0);
+    if (width > 0) commandLine += L" --window-width " + std::to_wstring(width);
+
+    const int height = lumesync::JsonIntField(payload, L"height").value_or(0);
+    if (height > 0) commandLine += L" --window-height " + std::to_wstring(height);
+
+    STARTUPINFOW startupInfo = {};
+    startupInfo.cb = sizeof(startupInfo);
+    PROCESS_INFORMATION processInfo = {};
+    std::vector<wchar_t> mutableCommand(commandLine.begin(), commandLine.end());
+    mutableCommand.push_back(L'\0');
+
+    const BOOL created = CreateProcessW(
+        nullptr,
+        mutableCommand.data(),
+        nullptr,
+        nullptr,
+        FALSE,
+        0,
+        nullptr,
+        ExeDir().wstring().c_str(),
+        &startupInfo,
+        &processInfo);
+    if (!created) {
+      lumesync::AppendLog(L"shell", L"Create child window process failed: " + std::to_wstring(GetLastError()));
+      return;
+    }
+
+    CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
   }
 
   bool BootstrapSession() {
@@ -853,6 +1027,7 @@ class TeacherShellApp {
   TeacherWindowSettings settings_;
   ChildProcess serverProcess_;
   SessionSecrets sessionSecrets_;
+  StartupWindowOptions startupOptions_;
 #if LUMESYNC_HAS_WEBVIEW2
   HMODULE webviewLoader_ = nullptr;
   ComPtr<ICoreWebView2Controller> webviewController_;
@@ -865,31 +1040,35 @@ class TeacherShellApp {
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int nCmdShow) {
   EnableDpiAwareness();
   lumesync::AppendLog(L"shell", L"teacher shell starting");
-  HANDLE mutex = AcquireInstanceMutex();
-  if (!mutex) {
-    lumesync::AppendLog(L"shell", L"instance mutex already exists");
-    ActivateExistingInstance();
-    return 0;
+  const StartupWindowOptions startupOptions = ParseStartupWindowOptions();
+  HANDLE mutex = nullptr;
+  if (!startupOptions.childWindow) {
+    mutex = AcquireInstanceMutex();
+    if (!mutex) {
+      lumesync::AppendLog(L"shell", L"instance mutex already exists");
+      ActivateExistingInstance();
+      return 0;
+    }
   }
 
   HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
   if (FAILED(hr)) {
     lumesync::AppendLog(L"shell", L"CoInitializeEx failed");
-    CloseHandle(mutex);
+    if (mutex) CloseHandle(mutex);
     return 1;
   }
 
-  TeacherShellApp app(instance);
+  TeacherShellApp app(instance, startupOptions);
   if (!app.Initialize(nCmdShow)) {
     lumesync::AppendLog(L"shell", L"TeacherShellApp::Initialize failed");
     CoUninitialize();
-    CloseHandle(mutex);
+    if (mutex) CloseHandle(mutex);
     return 1;
   }
   lumesync::AppendLog(L"shell", L"teacher shell initialized");
   const int code = app.Run();
   lumesync::AppendLog(L"shell", L"teacher shell exiting with code " + std::to_wstring(code));
   CoUninitialize();
-  CloseHandle(mutex);
+  if (mutex) CloseHandle(mutex);
   return code;
 }

@@ -4,32 +4,175 @@
 const IDENTITY_CLIENT_ID_KEY = 'lumesync_host_client_id';
 const RENDER_ENGINE_BUNDLE = '/render-engine.js';
 let renderEnginePromise = null;
+const TEACHER_LAYER_CLASS = Object.freeze({
+    floatingChrome: 'z-[9990]',
+    overlay: 'z-[10000]',
+    modal: 'z-[10020]',
+    drawer: 'z-[10030]',
+    popup: 'z-[10040]',
+});
+
+const getTeacherLayerClass = (key) => window.__LumeSyncLayer?.[key] || TEACHER_LAYER_CLASS[key] || '';
+window.__getTeacherLayerClass = getTeacherLayerClass;
+window.__LumeSyncIsStandaloneClassroomWindow = () => {
+    return window.__LumeSyncWindowMode === 'classroom';
+};
+window.__LumeSyncOpenClassroomWindow = () => {
+    if (typeof window.openWindow === 'function') {
+        window.openWindow('', {
+            mode: 'classroom',
+            width: 1800,
+            height: 1350,
+            title: '机房视图'
+        });
+        return;
+    }
+};
+
+const ensureTeacherShellStyles = () => {
+    window.__LumeSyncLayer = { ...(window.__LumeSyncLayer || {}), ...TEACHER_LAYER_CLASS };
+    if (document.getElementById('teacher-shell-liquid-style')) return;
+    const style = document.createElement('style');
+    style.id = 'teacher-shell-liquid-style';
+    style.textContent = `
+        :root {
+            --teacher-bg: #07111f;
+            --teacher-glass: rgba(15, 23, 42, 0.68);
+            --teacher-glass-strong: rgba(15, 23, 42, 0.82);
+            --teacher-glass-soft: rgba(15, 23, 42, 0.54);
+            --teacher-border: rgba(255, 255, 255, 0.18);
+            --teacher-border-strong: rgba(255, 255, 255, 0.28);
+            --teacher-accent: #38bdf8;
+        }
+        .teacher-shell-page {
+            background:
+                radial-gradient(circle at 12% 8%, rgba(56, 189, 248, 0.26), transparent 30%),
+                radial-gradient(circle at 88% 18%, rgba(16, 185, 129, 0.18), transparent 28%),
+                linear-gradient(145deg, #020617 0%, #07111f 50%, #0f172a 100%);
+            color: #f8fafc;
+        }
+        .teacher-glass {
+            background: linear-gradient(135deg, var(--teacher-glass), var(--teacher-glass-soft));
+            border: 1px solid var(--teacher-border);
+            box-shadow: 0 24px 80px rgba(2, 6, 23, 0.42), inset 0 1px 0 rgba(255,255,255,0.18);
+            backdrop-filter: blur(26px) saturate(155%);
+            -webkit-backdrop-filter: blur(26px) saturate(155%);
+            color: #f8fafc;
+        }
+        .teacher-glass-dark {
+            background: linear-gradient(135deg, var(--teacher-glass-strong), var(--teacher-glass));
+            border: 1px solid var(--teacher-border);
+            box-shadow: 0 24px 90px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255,255,255,0.16);
+            backdrop-filter: blur(28px) saturate(160%);
+            -webkit-backdrop-filter: blur(28px) saturate(160%);
+            color: #f8fafc;
+        }
+        .teacher-glass-light {
+            background: linear-gradient(135deg, var(--teacher-glass), var(--teacher-glass-soft));
+            border: 1px solid var(--teacher-border);
+            box-shadow: 0 20px 70px rgba(2, 6, 23, 0.36), inset 0 1px 0 rgba(255,255,255,0.18);
+            backdrop-filter: blur(26px) saturate(155%);
+            -webkit-backdrop-filter: blur(26px) saturate(155%);
+            color: #f8fafc;
+        }
+        .teacher-floating-topbar {
+            position: absolute;
+            left: 16px;
+            right: 16px;
+            top: 14px;
+            z-index: 9990;
+            min-height: 58px;
+            border-radius: 24px;
+            padding: 10px 14px;
+        }
+        .teacher-floating-dock {
+            position: absolute;
+            left: 50%;
+            bottom: 14px;
+            z-index: 9990;
+            transform: translateX(-50%);
+            pointer-events: auto;
+            border-radius: 24px;
+            padding: 10px;
+        }
+        .teacher-liquid-button {
+            border: 1px solid rgba(255,255,255,0.18);
+            background: rgba(255,255,255,0.12);
+            color: #e2e8f0;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 10px 28px rgba(2,6,23,0.24);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
+        .teacher-liquid-button:hover {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+        .teacher-glass-light .teacher-liquid-button {
+            background: rgba(255,255,255,0.12);
+            color: #e2e8f0;
+            border-color: rgba(255,255,255,0.18);
+        }
+        .teacher-glass-light .teacher-liquid-button:hover {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+        }
+        .teacher-liquid-primary {
+            background: linear-gradient(135deg, rgba(14,165,233,0.94), rgba(16,185,129,0.84));
+            color: #fff;
+            border-color: rgba(255,255,255,0.3);
+            box-shadow: 0 16px 44px rgba(14,165,233,0.28);
+        }
+        .teacher-liquid-danger {
+            background: linear-gradient(135deg, rgba(239,68,68,0.9), rgba(244,63,94,0.78));
+            color: #fff;
+        }
+        .teacher-course-stage {
+            position: absolute;
+            inset: 0;
+            padding: 12px;
+            z-index: 1;
+        }
+        .teacher-course-stage > * {
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 30px 100px rgba(0,0,0,0.35);
+        }
+        .teacher-glass-drawer {
+            background: linear-gradient(145deg, var(--teacher-glass-strong), var(--teacher-glass));
+            border-left: 1px solid rgba(255,255,255,0.16);
+            box-shadow: -30px 0 90px rgba(0,0,0,0.42);
+            backdrop-filter: blur(28px) saturate(150%);
+            -webkit-backdrop-filter: blur(28px) saturate(150%);
+            color: #f8fafc;
+        }
+        .teacher-shell-page button,
+        .teacher-glass button {
+            transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+        }
+        .teacher-borderless {
+            border-color: transparent !important;
+        }
+        @keyframes teacherGlassIn {
+            from { opacity: 0; transform: translateY(14px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .teacher-glass-enter { animation: teacherGlassIn 260ms ease-out both; }
+        @keyframes teacherDockIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(14px) scale(0.98); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+        }
+        .teacher-floating-dock.teacher-glass-enter { animation: teacherDockIn 260ms ease-out both; }
+    `;
+    document.head.appendChild(style);
+};
 
 window.__LumeSyncStartWindowDrag = (event) => {
     if (!event || event.button !== 0) return;
     if (event.target?.closest?.('[data-window-control="true"]')) return;
     if (!window.electronAPI?.beginWindowDrag) return;
 
-    window.__LumeSyncWindowDragActive = true;
     window.electronAPI.beginWindowDrag({ screenX: event.screenX, screenY: event.screenY });
-
-    const handleMove = (moveEvent) => {
-        if (!window.__LumeSyncWindowDragActive) return;
-        window.electronAPI?.updateWindowDrag?.({
-            screenX: moveEvent.screenX,
-            screenY: moveEvent.screenY
-        });
-    };
-
-    const handleUp = () => {
-        window.__LumeSyncWindowDragActive = false;
-        window.electronAPI?.endWindowDrag?.();
-        document.removeEventListener('mousemove', handleMove);
-        document.removeEventListener('mouseup', handleUp);
-    };
-
-    document.addEventListener('mousemove', handleMove);
-    document.addEventListener('mouseup', handleUp);
 };
 
 const loadGlobalScript = (src) => new Promise((resolve, reject) => {
@@ -159,7 +302,6 @@ function ClassroomApp() {
     const [currentSlide, setCurrentSlide] = useState(0);
     const [showSettings, setShowSettings] = useState(false);
     const [showLog, setShowLog] = useState(false);
-    const [showClassroomView, setShowClassroomView] = useState(false);
     const [loadingProgress, setLoadingProgress] = useState({
         currentStep: '',
         currentFile: '',
@@ -190,6 +332,7 @@ function ClassroomApp() {
     const settingsRef = useRef(settings);
     const studentCountPollRef = useRef(null);
     const activeCourseIdRef = useRef(null);
+    const isStandaloneClassroomWindow = window.__LumeSyncIsStandaloneClassroomWindow?.() === true;
     useEffect(() => { settingsRef.current = settings; }, [settings]);
 
     useEffect(() => {
@@ -442,6 +585,14 @@ function ClassroomApp() {
 
     const handleEndCourse = () => {
         activeCourseIdRef.current = null;
+        setCurrentCourseId(null);
+        setCurrentCourseData(null);
+        setCourseError(null);
+        setCurrentSlide(0);
+        window.CourseData = null;
+        window.CameraManager?.release?.();
+        if (window._onCamActive) window._onCamActive(false);
+        window.electronAPI?.classEnded?.();
         if (socketRef.current && isHost) socketRef.current.emit('end-course');
     };
 
@@ -476,21 +627,44 @@ function ClassroomApp() {
 
     if (identityError) {
         return (
-            <div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white select-none px-8" onMouseDown={handleTitlebarMouseDown}>
-                <i className="fas fa-circle-exclamation text-5xl text-red-400 mb-6"></i>
-                <h2 className="text-2xl tracking-widest font-bold">身份验证失败</h2>
-                <p className="text-slate-300 mt-3 text-center break-all">{identityError}</p>
+            <div className="teacher-shell-page flex h-full items-center justify-center select-none px-8" onMouseDown={handleTitlebarMouseDown}>
+                <div className="teacher-glass-dark teacher-glass-enter max-w-2xl rounded-[32px] p-10 text-center">
+                    <i className="fas fa-circle-exclamation text-5xl text-rose-300 mb-6"></i>
+                    <h2 className="text-2xl tracking-widest font-black">身份验证失败</h2>
+                    <p className="text-slate-300 mt-3 text-center break-all">{identityError}</p>
+                </div>
             </div>
         );
     }
 
     if (!roleAssigned) {
         return (
-            <div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white select-none" onMouseDown={handleTitlebarMouseDown}>
-                <i className="fas fa-network-wired fa-fade text-5xl text-blue-500 mb-6"></i>
-                <h2 className="text-2xl tracking-widest font-bold">正在连接课堂服务器...</h2>
-                <p className="text-slate-400 mt-2">正在验证身份并分配权限...</p>
+            <div className="teacher-shell-page flex h-full items-center justify-center select-none" onMouseDown={handleTitlebarMouseDown}>
+                <div className="teacher-glass-dark teacher-glass-enter rounded-[32px] px-12 py-10 text-center">
+                    <i className="fas fa-network-wired fa-fade text-5xl text-sky-300 mb-6"></i>
+                    <h2 className="text-2xl tracking-widest font-black">正在连接课堂服务器...</h2>
+                    <p className="text-slate-400 mt-2">正在验证身份并分配权限...</p>
+                </div>
             </div>
+        );
+    }
+
+    if (isStandaloneClassroomWindow && isHost) {
+        return (
+            <ClassroomView
+                standalone={true}
+                onClose={() => {
+                    if (window.electronAPI?.closeWindow) {
+                        window.electronAPI.closeWindow();
+                        return;
+                    }
+                    window.close();
+                }}
+                socket={socketRef.current}
+                studentLog={sharedStudentLog}
+                podiumAtTop={settings && settings.podiumAtTop}
+                onPodiumAtTopChange={(v) => handleSettingsChange('podiumAtTop', !!v)}
+            />
         );
     }
 
@@ -516,15 +690,16 @@ function ClassroomApp() {
 
     if (isLoading) {
         return (
-            <div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white select-none px-8" onMouseDown={handleTitlebarMouseDown}>
-                <i className="fas fa-layer-group fa-bounce text-6xl text-purple-500 mb-8"></i>
+            <div className="teacher-shell-page flex h-full items-center justify-center select-none px-8" onMouseDown={handleTitlebarMouseDown}>
+                <div className="teacher-glass-dark teacher-glass-enter flex w-full max-w-xl flex-col items-center rounded-[34px] px-10 py-12 text-white">
+                <i className="fas fa-layer-group fa-bounce text-6xl text-sky-300 mb-8"></i>
 
                 <h2 className="text-3xl tracking-widest font-bold mb-3">正在加载课件内容...</h2>
 
                 {/* 进度条 */}
-                <div className="w-80 h-2 bg-slate-700 rounded-full overflow-hidden mb-4">
+                <div className="w-80 h-2 bg-white/10 rounded-full overflow-hidden mb-4">
                     <div
-                        className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300 ease-out"
+                        className="h-full bg-gradient-to-r from-sky-300 to-emerald-300 transition-all duration-300 ease-out"
                         style={{ width: `${loadingProgress.progress}%` }}
                     ></div>
                 </div>
@@ -550,6 +725,7 @@ function ClassroomApp() {
                 <p className="text-slate-400 mt-4 text-sm flex items-center">
                     <i className="fas fa-bolt text-yellow-400 mr-2"></i> 请稍候，正在准备课堂环境
                 </p>
+                </div>
             </div>
         );
     }
@@ -563,61 +739,66 @@ function ClassroomApp() {
             });
         };
         return (
-            <div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white select-none p-8" onMouseDown={handleTitlebarMouseDown}>
-                <i className="fas fa-circle-exclamation text-5xl text-red-400 mb-6"></i>
-                <h2 className="text-2xl font-bold mb-2">课件加载失败</h2>
+            <div className="teacher-shell-page flex h-full flex-col items-center justify-center text-white select-none p-8" onMouseDown={handleTitlebarMouseDown}>
+                <div className="teacher-glass-dark teacher-glass-enter w-full max-w-3xl rounded-[34px] p-8 text-center">
+                <i className="fas fa-circle-exclamation text-5xl text-rose-300 mb-6"></i>
+                <h2 className="text-2xl font-black mb-2">课件加载失败</h2>
                 {isHost ? (
                     <div className="mt-4 w-full max-w-2xl">
-                        <div className="bg-red-950/60 border border-red-500/40 rounded-2xl p-6 text-left">
+                        <div className="bg-red-950/50 border border-red-300/20 rounded-3xl p-6 text-left backdrop-blur-xl">
                             <div className="flex items-center justify-between mb-2">
                                 <p className="text-red-300 font-bold flex items-center"><i className="fas fa-bug mr-2"></i> 错误详情</p>
-                                <button onClick={handleCopy} className={`flex items-center px-3 py-1 rounded-lg text-xs font-bold transition-colors ${copyDone ? 'bg-green-600 text-white' : 'bg-red-900/60 hover:bg-red-800/60 text-red-300'}`}>
+                                <button onClick={handleCopy} className={`teacher-liquid-button flex items-center px-3 py-1 rounded-xl text-xs font-bold ${copyDone ? 'text-emerald-200' : 'text-red-200'}`}>
                                     <i className={`fas ${copyDone ? 'fa-check' : 'fa-copy'} mr-1.5`}></i>
                                     {copyDone ? '已复制' : '复制'}
                                 </button>
                             </div>
                             <pre className="text-red-200 text-sm font-mono whitespace-pre-wrap break-all leading-relaxed">{errorText}</pre>
                         </div>
-                        <button onClick={() => { setCourseError(null); setCurrentCourseId(null); }} className="mt-6 px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold transition-colors">
+                        <button onClick={handleEndCourse} className="teacher-liquid-button mt-6 px-6 py-3 rounded-2xl font-bold">
                             <i className="fas fa-arrow-left mr-2"></i> 返回课件选择
                         </button>
                     </div>
                 ) : (
                     <p className="text-slate-400 mt-2">请等待老师重新加载课件</p>
                 )}
+                </div>
             </div>
         );
     }
 
     if (!currentCourseData) {
         return (
-            <div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white select-none px-8" onMouseDown={handleTitlebarMouseDown}>
-                <i className="fas fa-layer-group fa-bounce text-6xl text-purple-500 mb-8"></i>
-                <h2 className="text-3xl tracking-widest font-bold mb-3">正在加载课件内容...</h2>
-                <p className="text-slate-400 mt-4 text-sm flex items-center">
-                    <i className="fas fa-bolt text-yellow-400 mr-2"></i> 请稍候，正在准备课堂环境
-                </p>
+            <div className="teacher-shell-page flex h-full items-center justify-center text-white select-none px-8" onMouseDown={handleTitlebarMouseDown}>
+                <div className="teacher-glass-dark teacher-glass-enter rounded-[34px] px-12 py-10 text-center">
+                    <i className="fas fa-layer-group fa-bounce text-6xl text-sky-300 mb-8"></i>
+                    <h2 className="text-3xl tracking-widest font-bold mb-3">正在加载课件内容...</h2>
+                    <p className="text-slate-400 mt-4 text-sm flex items-center">
+                        <i className="fas fa-bolt text-yellow-400 mr-2"></i> 请稍候，正在准备课堂环境
+                    </p>
+                </div>
             </div>
         );
     }
 
     return (
         <window.LumeSyncRenderEngine.CourseErrorBoundary courseId={currentCourseId} onEndCourse={isHost ? handleEndCourse : null}>
-            <div className="flex flex-col h-full bg-slate-900 text-slate-800 font-sans select-none relative">
+            <div className="teacher-shell-page h-full overflow-hidden font-sans select-none relative">
                 <div
-                    className="flex items-center justify-between px-6 md:px-8 py-4 bg-white shadow-md z-20 relative h-[72px] shrink-0"
+                    className="teacher-floating-topbar teacher-glass-dark teacher-glass-enter flex items-center justify-between"
                     style={{WebkitAppRegion:'drag'}}
                     onMouseDown={handleTitlebarMouseDown}
                     onDoubleClick={handleTitlebarDoubleClick}
                 >
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
-                        <i className="fas fa-microchip text-blue-600 text-2xl md:text-3xl"></i>
-                        <h1 className="flex-1 min-w-0 text-lg md:text-2xl font-bold text-slate-800 tracking-wide truncate">{currentCourseData.title}</h1>
+                        <i className="fas fa-microchip text-sky-200 text-2xl md:text-3xl"></i>
+                        <h1 className="flex-1 min-w-0 text-lg md:text-2xl font-bold text-white tracking-wide truncate">{currentCourseData.title}</h1>
                         <button
-                            onClick={() => setShowClassroomView(true)}
-                            className="px-3 py-1 text-xs md:text-sm font-bold rounded-full border bg-purple-50 text-purple-600 border-purple-200 flex items-center shadow-inner hover:bg-purple-100 transition-colors"
+                            onClick={() => window.__LumeSyncOpenClassroomWindow?.()}
+                            className="px-3 py-1 text-xs md:text-sm font-bold rounded-full border bg-sky-300/15 text-sky-100 border-sky-200/30 flex items-center shadow-inner hover:bg-sky-300/25 transition-colors"
                             title="点击查看机房视图"
                             style={{WebkitAppRegion:'no-drag'}}
+                            data-window-control="true"
                         >
                             <span className="relative flex h-2 w-2 mr-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
@@ -627,13 +808,13 @@ function ClassroomApp() {
                         </button>
                     </div>
                     <div className="flex items-center space-x-3 md:space-x-4" style={{WebkitAppRegion:'no-drag'}} data-window-control="true">
-                        <button onClick={handleEndCourse} className="flex items-center px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg border border-red-200 transition-colors text-sm font-bold" title="结束课件">
+                        <button onClick={handleEndCourse} className="teacher-liquid-danger flex items-center px-3 py-2 rounded-2xl text-sm font-bold" title="结束课件">
                             <i className="fas fa-stop"></i>
                         </button>
-                        <button onClick={() => setShowSettings(v => !v)} className="flex items-center px-3 py-2 bg-slate-50 text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors text-sm font-bold" title="课堂设置">
+                        <button onClick={() => setShowSettings(v => !v)} className="teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-sm font-bold" title="课堂设置">
                             <i className="fas fa-gear"></i>
                         </button>
-                        <button onClick={() => setShowLog(v => !v)} className="flex items-center px-3 py-2 bg-slate-50 text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors text-sm font-bold relative" title="学生日志">
+                        <button onClick={() => setShowLog(v => !v)} className="teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-sm font-bold relative" title="学生日志">
                             <i className="fas fa-list-ul"></i>
                             {sharedStudentLog.length > 0 && (
                                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
@@ -645,7 +826,7 @@ function ClassroomApp() {
                     </div>
                 </div>
 
-                <div className="flex-1 min-h-0">
+                <div className="teacher-course-stage">
                     <window.LumeSyncRenderEngine.CourseStage
                         courseId={currentCourseId}
                         title={currentCourseData.title}
@@ -667,20 +848,20 @@ function ClassroomApp() {
                     />
                 </div>
 
-                <div className="flex items-center justify-between px-6 md:px-10 py-4 bg-white border-t border-slate-200 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.1)] z-20 relative h-[72px] shrink-0">
-                    <button onClick={() => goToSlide(currentSlide - 1)} disabled={currentSlide === 0} className={`flex items-center px-4 md:px-6 py-2 md:py-2.5 rounded-xl font-bold text-base md:text-lg transition-all ${currentSlide === 0 ? 'text-slate-400 bg-slate-100 cursor-not-allowed' : 'text-white bg-blue-500 hover:bg-blue-600 shadow-md hover:-translate-x-1'}`}>
+                <div className="teacher-floating-dock teacher-glass-light teacher-glass-enter flex items-center gap-4">
+                    <button onClick={() => goToSlide(currentSlide - 1)} disabled={currentSlide === 0} className={`flex items-center px-4 md:px-6 py-2 md:py-2.5 rounded-2xl font-bold text-base md:text-lg transition-all ${currentSlide === 0 ? 'text-slate-400 bg-white/30 cursor-not-allowed' : 'teacher-liquid-primary hover:-translate-x-1'}`}>
                         <i className="fas fa-chevron-left mr-2"></i>上一页
                     </button>
                     <div className="flex items-center gap-3 relative">
-                        <span className="text-slate-500 font-bold text-base md:text-lg tracking-widest bg-slate-100 px-4 md:px-6 py-1 md:py-2 rounded-full shadow-inner border border-slate-200">
+                        <span className="text-slate-100 font-black text-base md:text-lg tracking-widest bg-white/12 px-4 md:px-6 py-1 md:py-2 rounded-full shadow-inner border border-white/20">
                             {currentSlide + 1} / {currentCourseData.slides.length}
                         </span>
                         <button
                             onClick={toggleInteractionSync}
-                            className={`flex items-center px-4 md:px-5 py-2 md:py-2.5 rounded-xl font-bold text-base md:text-lg transition-all border ${
+                            className={`flex items-center px-4 md:px-5 py-2 md:py-2.5 rounded-2xl font-bold text-base md:text-lg transition-all border ${
                                 (settings && settings.syncInteraction === true)
-                                    ? 'bg-amber-500 text-white border-amber-500 hover:bg-amber-400'
-                                    : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                                    ? 'bg-amber-400/90 text-white border-white/40 shadow-lg'
+                                    : 'teacher-liquid-button text-slate-100'
                             }`}
                             title={(settings && settings.syncInteraction === true) ? '已开启交互同步（点击关闭）' : '开启教师交互同步（学生端同步所有操作）'}
                         >
@@ -688,19 +869,19 @@ function ClassroomApp() {
                             {(settings && settings.syncInteraction === true) ? '同步交互' : '开启同步'}
                         </button>
                     </div>
-                    <button onClick={() => goToSlide(currentSlide + 1)} disabled={currentSlide === currentCourseData.slides.length - 1} className={`flex items-center px-4 md:px-6 py-2 md:py-2.5 rounded-xl font-bold text-base md:text-lg transition-all ${currentSlide === currentCourseData.slides.length - 1 ? 'text-slate-400 bg-slate-100 cursor-not-allowed' : 'text-white bg-blue-500 hover:bg-blue-600 shadow-md hover:translate-x-1'}`}>
+                    <button onClick={() => goToSlide(currentSlide + 1)} disabled={currentSlide === currentCourseData.slides.length - 1} className={`flex items-center px-4 md:px-6 py-2 md:py-2.5 rounded-2xl font-bold text-base md:text-lg transition-all ${currentSlide === currentCourseData.slides.length - 1 ? 'text-slate-400 bg-white/30 cursor-not-allowed' : 'teacher-liquid-primary hover:translate-x-1'}`}>
                         下一页<i className="fas fa-chevron-right ml-2"></i>
                     </button>
                 </div>
 
                 {showLog && (
-                    <div className="fixed inset-0 z-[9997] flex justify-end" onClick={() => setShowLog(false)}>
-                        <div className="w-96 h-full bg-white shadow-2xl border-l border-slate-200 flex flex-col" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
-                                <h3 className="font-bold text-slate-800 text-lg flex items-center">
-                                    <i className="fas fa-list-ul mr-2 text-blue-500"></i> 学生操作日志
+                    <div className={`fixed inset-0 ${getTeacherLayerClass('drawer')} flex justify-end bg-black/20 backdrop-blur-sm`} onClick={() => setShowLog(false)}>
+                        <div className="teacher-glass-drawer w-96 h-full flex flex-col" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
+                                <h3 className="font-bold text-white text-lg flex items-center">
+                                    <i className="fas fa-list-ul mr-2 text-sky-300"></i> 学生操作日志
                                 </h3>
-                                <button onClick={() => setShowLog(false)} className="text-slate-400 hover:text-slate-600"><i className="fas fa-xmark text-xl"></i></button>
+                                <button onClick={() => setShowLog(false)} className="text-slate-300 hover:text-white"><i className="fas fa-xmark text-xl"></i></button>
                             </div>
                             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 text-sm">
                                 {sharedStudentLog.length === 0 ? (
@@ -733,17 +914,7 @@ function ClassroomApp() {
                 )}
 
                 {showSettings && (
-                    <SettingsPanel settings={settings} onSettingsChange={handleSettingsChange} socket={socketRef.current} onClose={() => setShowSettings(false)} zIndex="z-[9998]" />
-                )}
-
-                {showClassroomView && (
-                    <ClassroomView
-                        onClose={() => setShowClassroomView(false)}
-                        socket={socketRef.current}
-                        studentLog={sharedStudentLog}
-                        podiumAtTop={settings && settings.podiumAtTop}
-                        onPodiumAtTopChange={(v) => handleSettingsChange('podiumAtTop', !!v)}
-                    />
+                    <SettingsPanel settings={settings} onSettingsChange={handleSettingsChange} socket={socketRef.current} onClose={() => setShowSettings(false)} zIndex={getTeacherLayerClass('drawer')} />
                 )}
             </div>
         </window.LumeSyncRenderEngine.CourseErrorBoundary>
@@ -759,6 +930,8 @@ const bootEngine = async () => {
         domRetries--;
     }
     if (!rootElement) return;
+
+    ensureTeacherShellStyles();
 
     const root = ReactDOM.createRoot(rootElement);
     console.log('[TeacherApp] starting with core render engine...');

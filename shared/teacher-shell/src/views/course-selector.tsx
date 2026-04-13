@@ -1,4 +1,4 @@
-// ========================================================
+﻿// ========================================================
 // 课程选择界面组件（仅教师端）- 类似文件资源管理器
 // ========================================================
 
@@ -138,7 +138,6 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
     const [showGuide, setShowGuide] = useState(false);
     const [guideContent, setGuideContent] = useState('');
     const [showSettings, setShowSettings] = useState(false);
-    const [showClassroomView, setShowClassroomView] = useState(false);
     const [showSubmissionsBrowser, setShowSubmissionsBrowser] = useState(false);
     const [courseData, setCourseData] = useState({ courses: [], folders: [] });
     const [viewMode, setViewMode] = useState('grid');
@@ -567,20 +566,20 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
     }, []);
 
     return (
-        <div className="flex flex-col h-full bg-slate-900 text-white overflow-hidden">
+        <div className="teacher-shell-page h-full text-white overflow-hidden relative p-3">
             <div
-                className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0"
+                className="teacher-glass-light teacher-glass-enter teacher-borderless flex items-center justify-between px-4 py-2.5 rounded-[24px] shrink-0 relative z-30"
                 style={{WebkitAppRegion:'drag'}}
                 onMouseDown={(event) => window.__LumeSyncStartWindowDrag?.(event)}
             >
-                <div className="flex items-center space-x-2">
-                    <i className="fas fa-chalkboard-teacher text-blue-400 text-xl"></i>
-                    <h1 className="text-xl font-bold">教师控制台</h1>
+                <div className="flex items-center space-x-2 text-white">
+                    <i className="fas fa-chalkboard-teacher text-sky-200 text-xl"></i>
+                    <h1 className="text-xl font-black text-white tracking-wide">教师控制台</h1>
                 </div>
-                <div className="flex items-center space-x-2" style={{WebkitAppRegion:'no-drag'}} data-window-control="true">
+                <div className="flex items-center space-x-2 text-white" style={{WebkitAppRegion:'no-drag'}} data-window-control="true">
                     <button
-                        onClick={() => setShowClassroomView(true)}
-                        className="px-3 py-1.5 bg-purple-500/20 text-purple-300 rounded-full text-xs font-bold border border-purple-500/30 flex items-center hover:bg-purple-500/30 transition-colors"
+                        onClick={() => window.__LumeSyncOpenClassroomWindow?.()}
+                        className="px-3 py-1.5 bg-sky-300/15 text-sky-100 rounded-full text-xs font-bold border border-sky-200/30 flex items-center hover:bg-sky-300/25 transition-colors"
                         title="点击查看机房视图"
                     >
                         <span className="relative flex h-2 w-2 mr-1.5">
@@ -591,22 +590,22 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                     </button>
                     <button
                         onClick={() => setShowSettings(v => !v)}
-                        className="flex items-center px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg border border-slate-600 transition-colors text-xs"
+                        className="teacher-liquid-button flex items-center px-2.5 py-1.5 rounded-xl text-xs"
                         title="课堂设置"
                     >
                         <i className="fas fa-gear text-sm"></i>
                     </button>
-                    <span className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-full text-xs font-bold border border-blue-500/30">
+                    <span className="px-3 py-1.5 bg-white/12 text-slate-100 rounded-full text-xs font-bold border border-white/20">
                         老师端 (主控)
                     </span>
                     <WindowControls />
                 </div>
             </div>
 
-            <div className="flex-1 flex overflow-hidden">
+            <div className="mt-3 flex h-[calc(100%-78px)] overflow-hidden gap-3">
                 {/* 左侧树形视图 */}
-                <div className="w-64 bg-slate-800/50 border-r border-slate-700 overflow-y-auto shrink-0">
-                    <div className="p-3">
+                <div className="teacher-glass-dark teacher-glass-enter teacher-borderless w-64 rounded-[24px] overflow-y-auto shrink-0">
+                    <div className="p-2.5">
                         <div className="flex items-center justify-between mb-3 px-2">
                             <span className="text-slate-400 text-xs font-medium">文件夹</span>
                         </div>
@@ -643,10 +642,10 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                 </div>
 
                 {/* 右侧主视图 */}
-                <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="teacher-glass-dark teacher-glass-enter teacher-borderless flex-1 flex flex-col overflow-hidden rounded-[24px]">
                     {/* 工具栏 */}
-                    <div className="flex items-center justify-between px-4 py-2 bg-slate-800/30 border-b border-slate-700 shrink-0">
-                        <div className="flex items-center space-x-2">
+                    <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 shrink-0">
+                        <div className="flex items-center space-x-2 text-slate-100">
                             <button
                                 onClick={() => setCurrentFolder(null)}
                                 disabled={!currentFolder}
@@ -664,7 +663,7 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                                 <i className="fas fa-folder-open mr-1.5"></i>课件选择
                             </button>
                         </div>
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2 text-slate-100">
                             <button
                                 onClick={() => setViewMode('grid')}
                                 className={`p-2 rounded transition-colors ${viewMode === 'grid' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
@@ -682,21 +681,21 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                             <div className="h-4 w-px bg-slate-600 mx-2"></div>
                             <button
                                 onClick={() => setShowNewFolderDialog(true)}
-                                className="flex items-center px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-medium transition-colors"
+                                className="flex items-center px-3 py-1.5 bg-amber-400/80 hover:bg-amber-300 text-slate-950 rounded text-sm font-medium transition-colors"
                             >
                                 <i className="fas fa-folder-plus mr-1.5"></i>新建文件夹
                             </button>
-                            <button onClick={onRefresh} className="flex items-center px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded text-sm transition-colors">
+                            <button onClick={onRefresh} className="flex items-center px-3 py-1.5 teacher-liquid-button rounded text-sm transition-colors">
                                 <i className="fas fa-sync-alt mr-1.5"></i>刷新
                             </button>
-                            <button onClick={handleDownloadSkill} className="flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium transition-colors" title="下载 AI 课件生成 Skill 文件">
+                            <button onClick={handleDownloadSkill} className="flex items-center px-3 py-1.5 teacher-liquid-primary rounded text-sm font-medium transition-colors" title="下载 AI 课件生成 Skill 文件">
                                 <i className="fas fa-download mr-1.5"></i>下载 Skill
                             </button>
-                            <button onClick={handleOpenGuide} className="flex items-center px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded text-sm transition-colors" title="查看课件开发教程">
+                            <button onClick={handleOpenGuide} className="flex items-center px-3 py-1.5 teacher-liquid-button rounded text-sm transition-colors" title="查看课件开发教程">
                                 <i className="fas fa-book-open mr-1.5"></i>教程
                             </button>
                             {window.electronAPI?.importCourse && (
-                                <button onClick={handleImportCourse} className="flex items-center px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-sm font-medium transition-colors">
+                                <button onClick={handleImportCourse} className="flex items-center px-3 py-1.5 bg-emerald-500/80 hover:bg-emerald-400 text-white rounded text-sm font-medium transition-colors">
                                     <i className="fas fa-file-import mr-1.5"></i>导入
                                 </button>
                             )}
@@ -704,7 +703,7 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                     </div>
 
                     {/* 地址栏 */}
-                    <div className="px-4 py-2 bg-slate-800/30 border-b border-slate-700 flex items-center shrink-0">
+                    <div className="px-5 py-3 border-b border-white/10 flex items-center shrink-0">
                         {getBreadcrumbs().map((crumb, idx) => (
                             <React.Fragment key={crumb.id}>
                                 {idx > 0 && <i className="fas fa-chevron-right text-slate-600 text-xs mx-2"></i>}
@@ -737,7 +736,7 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                                                 ? 'bg-amber-500/20 border-amber-500/30'
                                                 : draggedItem?.item?.id === folder.id
                                                     ? 'opacity-50'
-                                                    : 'bg-slate-800/50 border-slate-700 hover:border-slate-500 hover:bg-slate-800'
+                                                    : 'bg-white/10 border-white/10 hover:border-sky-300/40 hover:bg-white/15'
                                         }`}
                                     >
                                         <div className="w-16 h-16 bg-amber-500/20 rounded-xl flex items-center justify-center text-3xl mb-3 border border-amber-500/30">
@@ -763,7 +762,7 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                                                 ? 'bg-blue-500/20 border-blue-500'
                                                 : draggedItem?.item?.id === course.id
                                                     ? 'opacity-50'
-                                                    : 'bg-slate-800/50 border-slate-700 hover:border-slate-500 hover:bg-slate-800'
+                                                    : 'bg-white/10 border-white/10 hover:border-sky-300/40 hover:bg-white/15'
                                         }`}
                                     >
                                         <div className={`w-16 h-16 rounded-xl bg-gradient-to-br ${course.color} flex items-center justify-center text-3xl mb-3 shadow-lg`}>
@@ -782,7 +781,7 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                         ) : (
                             <div className="space-y-2">
                                 {/* 表头 */}
-                                <div className="flex items-center px-3 py-2 bg-slate-800 rounded-t-lg border-b border-slate-700 text-xs text-slate-400 font-medium">
+                                <div className="flex items-center px-3 py-2 bg-white/10 rounded-t-2xl border-b border-white/10 text-xs text-slate-400 font-medium">
                                     <div className="w-10"></div>
                                     <div className="flex-1">名称</div>
                                     <div className="w-32">类型</div>
@@ -804,7 +803,7 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                                                 ? 'bg-amber-500/20 border border-amber-500/30'
                                                 : draggedItem?.item?.id === folder.id
                                                     ? 'opacity-50'
-                                                    : 'bg-slate-800/30 hover:bg-slate-800'
+                                                    : 'bg-white/10 hover:bg-white/15'
                                         }`}
                                     >
                                         <div className="w-10">
@@ -828,7 +827,7 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                                                 ? 'bg-blue-500/20'
                                                 : draggedItem?.item?.id === course.id
                                                     ? 'opacity-50'
-                                                    : 'bg-slate-800/30 hover:bg-slate-800'
+                                                    : 'bg-white/10 hover:bg-white/15'
                                         }`}
                                     >
                                         <div className="w-10">
@@ -850,12 +849,12 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                         )}
 
                         {folderItems.length === 0 && courseItems.length === 0 && (
-                            <div className="text-center py-12 bg-slate-800/30 rounded-xl border border-slate-700">
+                            <div className="text-center py-12 bg-white/10 rounded-3xl border border-white/10">
                                 <i className="fas fa-folder-open text-4xl text-slate-600 mb-3"></i>
                                 <p className="text-slate-500 text-sm">此文件夹为空</p>
                                 <button
                                     onClick={() => setShowNewFolderDialog(true)}
-                                    className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
+                                    className="mt-4 px-4 py-2 teacher-liquid-primary rounded-lg text-sm font-medium transition-colors"
                                 >
                                     <i className="fas fa-folder-plus mr-1.5"></i>新建文件夹
                                 </button>
@@ -864,7 +863,7 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                     </div>
 
                     {/* 状态栏 */}
-                    <div className="px-4 py-2 bg-slate-800 border-t border-slate-700 text-xs text-slate-500 flex items-center justify-between shrink-0">
+                    <div className="px-5 py-2 border-t border-white/10 text-xs text-slate-400 flex items-center justify-between shrink-0">
                         <span>{folderItems.length} 个文件夹, {courseItems.length} 个课件</span>
                         {selectedId && (
                             <span className="text-slate-400">已选择: {courseData.courses.find(c => c.id === selectedId)?.title}</span>
@@ -872,15 +871,15 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                     </div>
 
                     {/* 底部开始按钮 */}
-                    <div className="px-4 py-3 bg-slate-800 border-t border-slate-700 flex justify-between items-center shrink-0">
-                        <div className="flex items-center space-x-2">
+                    <div className="px-5 py-4 border-t border-white/10 flex justify-between items-center shrink-0">
+                        <div className="flex items-center space-x-2 text-slate-100">
                             <span className="text-slate-400 text-sm">共 {courseData.courses.length} 个课件</span>
                         </div>
                         <button
                             onClick={handleStartCourse}
                             disabled={!selectedId}
                             className={`flex items-center px-8 py-3 rounded-xl font-bold text-lg transition-all ${
-                                selectedId ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-blue-500/30' : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                selectedId ? 'teacher-liquid-primary' : 'bg-white/10 text-slate-500 cursor-not-allowed'
                             }`}
                         >
                             <i className="fas fa-play mr-3"></i>开始授课
@@ -891,7 +890,7 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
 
             {/* 新建文件夹对话框 */}
             {showNewFolderDialog && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60">
+                <div className={`fixed inset-0 ${(window.__getTeacherLayerClass?.('modal') || 'z-[10020]')} bg-black/50 flex items-center justify-center`}>
                     <div className="bg-slate-800 rounded-xl p-6 w-96 border border-slate-700 shadow-2xl">
                         <h3 className="text-white font-bold text-lg mb-4">新建文件夹</h3>
                         <input
@@ -906,13 +905,13 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                         <div className="flex justify-end gap-3">
                             <button
                                 onClick={() => setShowNewFolderDialog(false)}
-                                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-sm transition-colors"
+                                className="px-4 py-2 teacher-liquid-button rounded-lg text-sm transition-colors"
                             >
                                 取消
                             </button>
                             <button
                                 onClick={handleNewFolder}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
+                                className="px-4 py-2 teacher-liquid-primary rounded-lg text-sm font-medium transition-colors"
                             >
                                 创建
                             </button>
@@ -924,7 +923,7 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
             {/* 右键菜单 */}
             {contextMenu && (
                 <div
-                    className="fixed bg-slate-800 rounded-lg border border-slate-700 shadow-xl py-1 z-70 min-w-[150px]"
+                    className={`fixed bg-slate-800 rounded-lg border border-slate-700 shadow-xl py-1 ${(window.__getTeacherLayerClass?.('popup') || 'z-[10040]')} min-w-[150px]`}
                     style={{ left: contextMenu.x, top: contextMenu.y }}
                 >
                     {contextMenu.type === 'folder' && (
@@ -983,7 +982,7 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
 
             {/* 重命名对话框 */}
             {showRenameDialog && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60" onClick={() => setShowRenameDialog(false)}>
+                <div className={`fixed inset-0 ${(window.__getTeacherLayerClass?.('modal') || 'z-[10020]')} bg-black/50 flex items-center justify-center`} onClick={() => setShowRenameDialog(false)}>
                     <div className="bg-slate-800 rounded-xl p-6 w-96 border border-slate-700 shadow-2xl" onClick={e => e.stopPropagation()}>
                         <h3 className="text-white font-bold text-lg mb-4">重命名</h3>
                         <input
@@ -1003,13 +1002,13 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                         <div className="flex justify-end gap-3">
                             <button
                                 onClick={() => setShowRenameDialog(false)}
-                                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-sm transition-colors"
+                                className="px-4 py-2 teacher-liquid-button rounded-lg text-sm transition-colors"
                             >
                                 取消
                             </button>
                             <button
                                 onClick={handleRename}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
+                                className="px-4 py-2 teacher-liquid-primary rounded-lg text-sm font-medium transition-colors"
                             >
                                 确定
                             </button>
@@ -1019,18 +1018,18 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
             )}
 
             {showSettings && (
-                <SettingsPanel settings={settings} onSettingsChange={onSettingsChange} socket={socket} onClose={() => setShowSettings(false)} zIndex="z-50" />
+                <SettingsPanel settings={settings} onSettingsChange={onSettingsChange} socket={socket} onClose={() => setShowSettings(false)} zIndex={(window.__getTeacherLayerClass?.('drawer') || 'z-[10030]')} />
             )}
 
             {showGuide && (
-                <div className="fixed inset-0 z-50 flex" onClick={() => setShowGuide(false)}>
-                    <div className="ml-auto w-full max-w-2xl h-full bg-white shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-between px-6 py-4 bg-slate-800 border-b border-slate-700 shrink-0">
+                <div className={`fixed inset-0 ${(window.__getTeacherLayerClass?.('modal') || 'z-[10020]')} flex`} onClick={() => setShowGuide(false)}>
+                    <div className="teacher-glass-drawer ml-auto w-full max-w-2xl h-full flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
                             <h3 className="text-white font-bold text-lg flex items-center">
                                 <i className="fas fa-book-open mr-2 text-green-400"></i>课件开发教程
                             </h3>
-                            <div className="flex items-center space-x-2">
-                                <button onClick={handleDownloadSkill} className="flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
+                            <div className="flex items-center space-x-2 text-slate-100">
+                                <button onClick={handleDownloadSkill} className="flex items-center px-3 py-1.5 teacher-liquid-primary rounded-lg text-sm font-medium transition-colors">
                                     <i className="fas fa-download mr-1.5"></i>下载 Skill
                                 </button>
                                 <button onClick={() => setShowGuide(false)} className="text-slate-400 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-700 transition-colors">
@@ -1048,16 +1047,6 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                 </div>
             )}
 
-            {showClassroomView && (
-                <ClassroomView
-                    onClose={() => setShowClassroomView(false)}
-                    socket={socket}
-                    studentLog={studentLog}
-                    podiumAtTop={settings?.podiumAtTop}
-                    onPodiumAtTopChange={(v) => onSettingsChange && onSettingsChange('podiumAtTop', !!v)}
-                />
-            )}
-
             {showSubmissionsBrowser && (
                 <window.SubmissionsBrowser
                     courses={courseData}
@@ -1069,6 +1058,8 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
         </div>
     );
 }
+
+
 
 
 

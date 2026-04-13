@@ -511,7 +511,7 @@ function SubmissionsBrowser({ courses, selectedCourseId: initialCourseId, onClos
 
             {/* 文件预览弹窗 */}
             {selectedFile && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className={`fixed inset-0 bg-black/70 backdrop-blur-sm ${window.__LumeSyncLayer?.modal || 'z-[10020]'} flex items-center justify-center p-4`}>
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl flex flex-col max-h-[90vh] overflow-hidden">
                         {/* 标题栏 */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">

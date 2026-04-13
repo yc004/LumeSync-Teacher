@@ -224,7 +224,9 @@ bool SaveWindowSettings(const TeacherWindowSettings& settings) {
 
 std::wstring BuildTeacherUrl(const TeacherConfig& config) {
   std::wostringstream url;
-  url << L"http://" << config.teacherIp << L":" << config.port;
+  // The teacher shell always talks to its colocated local server. teacherIp is
+  // retained for student discovery/configuration and may disappear when offline.
+  url << L"http://127.0.0.1:" << config.port;
   return url.str();
 }
 

@@ -1,4 +1,4 @@
-// ========================================================
+﻿// ========================================================
 // 窗口控制组件 - 最小化、最大化/还原、关闭
 // ========================================================
 function WindowControls({ forceFullscreen = false }) {
@@ -50,24 +50,24 @@ function WindowControls({ forceFullscreen = false }) {
     };
 
     return (
-        <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' }}>
+        <div className="flex items-center gap-1 rounded-2xl bg-slate-950/10 p-1 border border-white/20" style={{ WebkitAppRegion: 'no-drag' }}>
             <button
                 onClick={handleMinimize}
-                className="w-11 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                className="w-10 h-8 flex items-center justify-center rounded-xl text-slate-500 hover:text-white hover:bg-sky-500/70 transition-colors"
                 title="最小化"
             >
                 <i className="fas fa-minus text-sm"></i>
             </button>
             <button
                 onClick={handleMaximize}
-                className="w-11 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                className="w-10 h-8 flex items-center justify-center rounded-xl text-slate-500 hover:text-white hover:bg-sky-500/70 transition-colors"
                 title={isMaximized ? "还原" : "最大化"}
             >
                 <i className={`fas ${isMaximized ? 'fa-compress' : 'fa-expand'} text-sm`}></i>
             </button>
             <button
                 onClick={handleClose}
-                className="w-11 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-red-600 transition-colors"
+                className="w-10 h-8 flex items-center justify-center rounded-xl text-slate-500 hover:text-white hover:bg-rose-500 transition-colors"
                 title="关闭"
             >
                 <i className="fas fa-xmark text-sm"></i>
@@ -75,3 +75,4 @@ function WindowControls({ forceFullscreen = false }) {
         </div>
     );
 }
+

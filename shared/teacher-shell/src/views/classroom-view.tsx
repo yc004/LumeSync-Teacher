@@ -3,7 +3,7 @@
 // 功能：显示所有学生座位，支持命名、拖拽排列、在线状态
 // 布局和命名持久化到 localStorage，支持多个班级（表）
 // ========================================================
-function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTopChange }) {
+function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTopChange, standalone = false }) {
     const STORAGE_KEY = 'classroom-layouts-v1';
     const podiumOnTop = typeof podiumAtTop === 'boolean' ? podiumAtTop : true;
 
@@ -38,6 +38,7 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
     const [showAddClassroom, setShowAddClassroom] = useState(false);
     const [newClassName, setNewClassName] = useState('');
     const classroomMenuRef = useRef(null);
+    const classroomMenuPopupRef = useRef(null);
 
     // 当前班级数据
     const currentClassroom = classrooms[currentClassroomId] || { name: '默认班级', seats: [], podiumAtTop: true };
@@ -71,13 +72,22 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
     const [showMoreMenu, setShowMoreMenu] = useState(false);
     const fileInputRef = useRef(null);
     const moreMenuRef = useRef(null);
+    const moreMenuPopupRef = useRef(null);
 
     useEffect(() => {
         const handleClickOutside = (e) => {
-            if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
+            if (
+                moreMenuRef.current
+                && !moreMenuRef.current.contains(e.target)
+                && !moreMenuPopupRef.current?.contains(e.target)
+            ) {
                 setShowMoreMenu(false);
             }
-            if (classroomMenuRef.current && !classroomMenuRef.current.contains(e.target)) {
+            if (
+                classroomMenuRef.current
+                && !classroomMenuRef.current.contains(e.target)
+                && !classroomMenuPopupRef.current?.contains(e.target)
+            ) {
                 setShowClassroomMenu(false);
             }
         };
@@ -117,6 +127,18 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
     const saveSeats = (next) => {
         setSeats(next);
         saveClassroom(currentClassroomId, { seats: next });
+    };
+
+    const handleTitlebarMouseDown = (event) => {
+        if (!standalone) return;
+        window.__LumeSyncStartWindowDrag?.(event);
+    };
+
+    const handleTitlebarDoubleClick = (event) => {
+        if (!standalone) return;
+        if (event.button !== 0) return;
+        if (event.target?.closest?.('[data-window-control="true"]')) return;
+        window.electronAPI?.maximizeWindow?.();
     };
 
     const normalizeIp = ip => ip && ip.startsWith('::ffff:') ? ip.slice(7) : ip;
@@ -486,6 +508,39 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
         'leave':           { icon: 'fa-user-minus', color: 'text-slate-400', label: '离线' },
     };
 
+    const sortedSeats = [...seats].sort((a, b) => a.row !== b.row ? a.row - b.row : a.col - b.col);
+    const onlineSeatCount = seats.filter(seat => onlineIPs.includes(seat.ip)).length;
+    const offlineSeatCount = Math.max(0, seats.length - onlineSeatCount);
+    const alertSeatCount = Object.values(recentAlerts).filter(items => Array.isArray(items) && items.length > 0).length;
+
+    const renderPodium = () => (
+        <div className="flex justify-center">
+            <div className="teacher-glass-light rounded-[24px] px-8 sm:px-12 py-2.5 text-[11px] sm:text-sm font-black tracking-[0.35em] text-white/90 shadow-[0_20px_45px_rgba(15,23,42,0.28)]">
+                讲台
+            </div>
+        </div>
+    );
+
+    const getPopupStyle = (anchorRef, { width, align = 'left' }) => {
+        const rect = anchorRef.current?.getBoundingClientRect?.();
+        if (!rect) return { visibility: 'hidden' };
+        const top = rect.bottom + 8;
+        if (align === 'right') {
+            return {
+                position: 'fixed',
+                top,
+                left: Math.max(12, rect.right - width),
+                width,
+            };
+        }
+        return {
+            position: 'fixed',
+            top,
+            left: Math.max(12, rect.left),
+            width,
+        };
+    };
+
     const renderSeat = (seat) => {
         const isOnline = onlineIPs.includes(seat.ip);
         const alerts = recentAlerts[seat.ip] || [];
@@ -497,42 +552,73 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
                 draggable
                 onDragStart={e => handleDragStart(e, seat.id)}
                 onDragEnd={handleDragEnd}
-                className={`relative flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-xl border-2 cursor-grab select-none transition-all duration-200 group
-                    ${isDragging ? 'opacity-40 scale-95' : ''}
-                    ${isOnline ? 'bg-green-900/40 border-green-500/60 shadow-green-500/20 shadow-md' : 'bg-slate-800/60 border-slate-600/40'}`}
-                style={{ minHeight: 70 }}
+                className={`relative flex min-h-[78px] sm:min-h-[94px] flex-col justify-between overflow-hidden rounded-[20px] border px-2 py-2 sm:px-2.5 sm:py-2.5 cursor-grab select-none transition-all duration-200 group
+                    ${isDragging ? 'opacity-40 scale-[0.98]' : 'hover:-translate-y-0.5'}
+                    ${isOnline
+                        ? 'bg-gradient-to-br from-emerald-300/22 via-cyan-300/16 to-white/10 border-emerald-200/35 shadow-[0_22px_40px_rgba(16,185,129,0.12)]'
+                        : 'bg-gradient-to-br from-white/14 via-white/8 to-slate-900/8 border-white/14 shadow-[0_18px_34px_rgba(15,23,42,0.18)] hover:border-sky-200/24'
+                    }`}
             >
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.16),transparent_55%)]"></div>
                 <button
                     onClick={() => handleDelete(seat.id)}
-                    className="absolute top-0.5 right-0.5 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-slate-700 hover:bg-red-500 text-slate-400 hover:text-white text-[10px] sm:text-xs items-center justify-center hidden group-hover:flex transition-colors z-10"
+                    className="absolute top-1.5 right-1.5 z-10 hidden h-5 w-5 items-center justify-center rounded-full border border-white/12 bg-white/10 text-[10px] text-slate-300 transition-colors hover:bg-red-500 hover:text-white group-hover:flex sm:h-6 sm:w-6 sm:text-xs"
                 >
                     <i className="fas fa-xmark text-[8px] sm:text-[10px]"></i>
                 </button>
-                <div className={`w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full mb-1 sm:mb-1.5 ${isOnline ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]' : 'bg-slate-600'}`}></div>
-                <span
-                    className="text-[10px] sm:text-xs font-bold text-white truncate max-w-full px-0.5 sm:px-1 cursor-text"
-                    title={`${seat.name || '未命名'}\n${seat.studentId ? '学号: ' + seat.studentId : ''}\n${seat.ip}`}
-                    onDoubleClick={() => startEdit(seat)}
-                >
-                    {seat.name || <span className="text-slate-500 italic">双击命名</span>}
-                </span>
-                {seat.studentId && <span className="text-[8px] sm:text-[9px] text-blue-400 font-mono truncate max-w-full px-0.5 sm:px-1">{seat.studentId}</span>}
-                <span className="text-[8px] sm:text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-full px-0.5 sm:px-1">{seat.ip}</span>
-                {lastAlert && alertIcons[lastAlert.type] && (
-                    <div className={`mt-0.5 sm:mt-1 flex items-center text-[8px] sm:text-[10px] ${alertIcons[lastAlert.type].color}`}>
-                        <i className={`fas ${alertIcons[lastAlert.type].icon} mr-0.5 sm:mr-1`}></i>
-                        <span className="hidden sm:inline">{alertIcons[lastAlert.type].label}</span>
+                <div className="relative z-[1] flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                        <div className={`mb-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] sm:text-[10px] ${
+                            isOnline
+                                ? 'border-emerald-200/35 bg-emerald-300/16 text-emerald-100'
+                                : 'border-white/12 bg-white/8 text-slate-300'
+                        }`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.8)]' : 'bg-slate-500'}`}></span>
+                            {isOnline ? 'ONLINE' : 'OFFLINE'}
+                        </div>
+                        <div
+                        className="truncate text-[10px] font-black tracking-[0.04em] text-white sm:text-[13px] cursor-text"
+                            title={`${seat.name || '未命名'}\n${seat.studentId ? '学号: ' + seat.studentId : ''}\n${seat.ip}`}
+                            onDoubleClick={() => startEdit(seat)}
+                        >
+                            {seat.name || <span className="italic text-slate-400">双击命名</span>}
+                        </div>
+                        {seat.studentId && (
+                            <div className="mt-0.5 truncate text-[8px] font-medium text-sky-200/90 sm:text-[9px]">
+                                #{seat.studentId}
+                            </div>
+                        )}
                     </div>
-                )}
+                    <div className="rounded-full border border-white/10 bg-white/8 px-2 py-0.5 text-[9px] font-mono text-slate-300">
+                        {seat.row}-{seat.col}
+                    </div>
+                </div>
+                <div className="relative z-[1] mt-2 space-y-1">
+                    <div className="truncate rounded-xl border border-white/10 bg-black/10 px-2 py-1.5 font-mono text-[8px] text-slate-300 sm:text-[9px]">
+                        {seat.ip}
+                    </div>
+                    {lastAlert && alertIcons[lastAlert.type] ? (
+                        <div className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[8px] font-medium sm:text-[9px] ${alertIcons[lastAlert.type].color} bg-black/10 border border-white/8`}>
+                            <i className={`fas ${alertIcons[lastAlert.type].icon}`}></i>
+                            <span className="truncate">{alertIcons[lastAlert.type].label}</span>
+                        </div>
+                    ) : (
+                        <div className="inline-flex items-center gap-1 rounded-full border border-white/8 bg-black/10 px-2 py-1 text-[8px] text-slate-400 sm:text-[9px]">
+                            <i className="fas fa-wave-square"></i>
+                            <span>状态正常</span>
+                        </div>
+                    )}
+                </div>
             </div>
         );
     };
 
     const renderList = () => (
-        <div className="flex-1 overflow-auto p-3 sm:p-4">
-            <table className="w-full min-w-[600px] text-sm text-left border-collapse">
+        <div className="teacher-glass-light flex-1 overflow-hidden rounded-[28px] border border-white/10">
+            <div className="h-full overflow-auto px-3 py-3 sm:px-5 sm:py-4">
+                <table className="w-full min-w-[700px] text-sm text-left border-separate border-spacing-y-2">
                 <thead>
-                    <tr className="text-slate-500 text-[10px] sm:text-xs uppercase tracking-wider border-b border-slate-700">
+                    <tr className="text-slate-300 text-[10px] sm:text-xs uppercase tracking-[0.22em]">
                         <th className="px-2 sm:px-3 py-2 w-6 text-center">#</th>
                         <th className="px-2 sm:px-3 py-2">状态</th>
                         <th className="px-2 sm:px-3 py-2">IP 地址</th>
@@ -546,44 +632,44 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
                 </thead>
                 <tbody>
                     {seats.length === 0 && (
-                        <tr><td colSpan="9" className="text-center text-slate-600 py-12">暂无座位，请导入或手动添加</td></tr>
+                        <tr><td colSpan="9" className="text-center text-slate-400 py-16">暂无座位，请先导入或手动添加。</td></tr>
                     )}
-                    {[...seats].sort((a, b) => a.row !== b.row ? a.row - b.row : a.col - b.col).map((seat, idx) => {
+                    {sortedSeats.map((seat, idx) => {
                         const isOnline = onlineIPs.includes(seat.ip);
                         const alerts = recentAlerts[seat.ip] || [];
                         const lastAlert = alerts[alerts.length - 1];
                         return (
-                            <tr key={seat.id} className="border-b border-slate-800 hover:bg-slate-800/40 transition-colors">
-                                <td className="px-2 sm:px-3 py-2 text-slate-600 text-center text-[10px] sm:text-xs">{idx + 1}</td>
-                                <td className="px-2 sm:px-3 py-2">
-                                    <span className={`inline-flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-xs font-bold ${isOnline ? 'text-green-400' : 'text-slate-500'}`}>
-                                        <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${isOnline ? 'bg-green-400' : 'bg-slate-600'}`}></span>
+                            <tr key={seat.id} className="overflow-hidden rounded-2xl bg-white/6 shadow-[0_14px_28px_rgba(15,23,42,0.12)] transition-colors hover:bg-white/10">
+                                <td className="rounded-l-2xl px-2 sm:px-3 py-3 text-slate-400 text-center text-[10px] sm:text-xs">{idx + 1}</td>
+                                <td className="px-2 sm:px-3 py-3">
+                                    <span className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-full px-2.5 py-1 text-[10px] sm:text-xs font-bold ${isOnline ? 'bg-emerald-300/16 text-emerald-100' : 'bg-white/8 text-slate-300'}`}>
+                                        <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${isOnline ? 'bg-green-400' : 'bg-slate-500'}`}></span>
                                         <span className="hidden sm:inline">{isOnline ? '在线' : '离线'}</span>
                                     </span>
                                 </td>
-                                <td className="px-2 sm:px-3 py-2 font-mono text-slate-300 text-[10px] sm:text-xs">{seat.ip}</td>
-                                <td className="px-2 sm:px-3 py-2">
+                                <td className="px-2 sm:px-3 py-3 font-mono text-slate-200 text-[10px] sm:text-xs">{seat.ip}</td>
+                                <td className="px-2 sm:px-3 py-3">
                                     <span
-                                        className="text-white text-[10px] sm:text-xs cursor-text hover:text-blue-300 transition-colors"
+                                        className="text-white text-[10px] sm:text-xs font-bold cursor-text hover:text-sky-300 transition-colors"
                                         onClick={() => startEdit(seat)}
                                         title="点击编辑"
                                     >
-                                        {seat.name || <span className="text-slate-600 italic">点击编辑</span>}
+                                        {seat.name || <span className="text-slate-400 italic">点击编辑</span>}
                                     </span>
                                 </td>
-                                <td className="px-2 sm:px-3 py-2 font-mono text-slate-400 text-[10px] sm:text-xs hidden sm:table-cell">{seat.studentId || <span className="text-slate-700 italic">—</span>}</td>
-                                <td className="px-2 sm:px-3 py-2 text-center text-slate-400 text-[10px] sm:text-xs hidden sm:table-cell">{seat.row}</td>
-                                <td className="px-2 sm:px-3 py-2 text-center text-slate-400 text-[10px] sm:text-xs hidden sm:table-cell">{seat.col}</td>
-                                <td className="px-2 sm:px-3 py-2 text-[10px] sm:text-xs hidden md:table-cell">
+                                <td className="px-2 sm:px-3 py-3 font-mono text-slate-300 text-[10px] sm:text-xs hidden sm:table-cell">{seat.studentId || <span className="text-slate-500 italic">-</span>}</td>
+                                <td className="px-2 sm:px-3 py-3 text-center text-slate-300 text-[10px] sm:text-xs hidden sm:table-cell">{seat.row}</td>
+                                <td className="px-2 sm:px-3 py-3 text-center text-slate-300 text-[10px] sm:text-xs hidden sm:table-cell">{seat.col}</td>
+                                <td className="px-2 sm:px-3 py-3 text-[10px] sm:text-xs hidden md:table-cell">
                                     {lastAlert && alertIcons[lastAlert.type] ? (
-                                        <span className={`flex items-center gap-1 ${alertIcons[lastAlert.type].color}`}>
+                                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${alertIcons[lastAlert.type].color} bg-black/10`}>
                                             <i className={`fas ${alertIcons[lastAlert.type].icon}`}></i>
                                             {alertIcons[lastAlert.type].label}
                                         </span>
-                                    ) : <span className="text-slate-700">—</span>}
+                                    ) : <span className="text-slate-500">-</span>}
                                 </td>
-                                <td className="px-2 sm:px-3 py-2 text-center">
-                                    <button onClick={() => handleDelete(seat.id)} className="text-slate-600 hover:text-red-400 transition-colors text-[10px] sm:text-xs" title="删除">
+                                <td className="rounded-r-2xl px-2 sm:px-3 py-3 text-center">
+                                    <button onClick={() => handleDelete(seat.id)} className="text-slate-400 hover:text-red-400 transition-colors text-[10px] sm:text-xs" title="删除">
                                         <i className="fas fa-trash-can"></i>
                                     </button>
                                 </td>
@@ -592,13 +678,14 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
                     })}
                 </tbody>
             </table>
+            </div>
         </div>
     );
 
     const renderGrid = () => {
         const rows = [];
-        const rowCount = gridRows + 1;
-        const colCount = gridCols + 1;
+        const rowCount = gridRows;
+        const colCount = gridCols;
         for (let vr = 1; vr <= rowCount; vr++) {
             const r = currentPodiumTop ? vr : (rowCount - vr + 1);
             const cols = [];
@@ -610,17 +697,17 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
                         key={`${vr}-${c}`}
                         onDragOver={e => handleDragOverCell(e, r, c)}
                         onDrop={e => handleDropCell(e, r, c)}
-                        className={`min-w-[80px] sm:min-w-[100px] min-h-[70px] sm:min-h-[90px] rounded-xl transition-all duration-150
-                            ${isOver && dragId ? 'bg-blue-500/20 border-2 border-blue-400 border-dashed' : ''}
-                            ${!seat && !isOver ? 'border border-dashed border-slate-700/40 rounded-xl' : ''}`}
+                        className={`min-w-[76px] sm:min-w-[96px] min-h-[78px] sm:min-h-[94px] rounded-[20px] transition-all duration-150
+                            ${isOver && dragId ? 'bg-sky-400/16 border-2 border-sky-200/50 border-dashed' : ''}
+                            ${!seat && !isOver ? 'border border-dashed border-white/12 bg-white/[0.03]' : ''}`}
                     >
                         {seat ? renderSeat(seat) : null}
                     </div>
                 );
             }
             rows.push(
-                <div key={vr} className="flex gap-2 sm:gap-3">
-                    <div className="w-6 flex items-center justify-center text-[10px] sm:text-xs text-slate-600 font-mono shrink-0">{r}</div>
+                <div key={vr} className="flex gap-2 sm:gap-2.5">
+                    <div className="w-6 flex items-center justify-center text-[10px] sm:text-xs text-slate-400 font-mono shrink-0">{r}</div>
                     {cols}
                 </div>
             );
@@ -628,226 +715,314 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
         return rows;
     };
 
+    const rootClassName = standalone
+        ? 'teacher-shell-page relative flex h-full overflow-hidden p-2'
+        : `teacher-shell-page fixed inset-0 ${(window.__getTeacherLayerClass?.('overlay') || 'z-[10000]')} flex items-center justify-center overflow-hidden bg-black/55 p-2`;
+    const shellClassName = standalone
+        ? 'teacher-glass-dark teacher-glass-enter teacher-borderless relative flex h-full w-full flex-col overflow-hidden rounded-[24px]'
+        : 'teacher-glass-dark teacher-glass-enter teacher-borderless relative flex h-[94vh] w-[97vw] max-w-[1500px] flex-col overflow-hidden rounded-[28px]';
+
     return (
-        <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-2 sm:p-4" onClick={handleClose}>
+        <div className={rootClassName} onClick={standalone ? undefined : handleClose}>
+            <div className="pointer-events-none absolute inset-0 opacity-90">
+                <div className="absolute -top-24 left-[8%] h-64 w-64 rounded-full bg-sky-400/18 blur-3xl"></div>
+                <div className="absolute right-[10%] top-[12%] h-72 w-72 rounded-full bg-emerald-400/14 blur-3xl"></div>
+                <div className="absolute bottom-[8%] left-[20%] h-56 w-56 rounded-full bg-indigo-400/12 blur-3xl"></div>
+            </div>
             <div
-                className="bg-slate-900 rounded-2xl shadow-2xl border border-slate-700 flex flex-col overflow-hidden"
-                style={{ width: '95vw', maxWidth: 1400, height: '92vh' }}
+                className={shellClassName}
                 onClick={e => e.stopPropagation()}
             >
-                {/* 顶栏 */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-slate-800 border-b border-slate-700 shrink-0 gap-3">
-                    <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto min-w-0">
-                        <i className="fas fa-chalkboard text-blue-400 text-lg sm:text-xl shrink-0"></i>
-                        <h2 className="text-white font-bold text-base sm:text-lg truncate">机房视图</h2>
-                        {/* 班级选择器 */}
-                        <div className="relative" ref={classroomMenuRef}>
-                            <button
-                                onClick={() => setShowClassroomMenu(!showClassroomMenu)}
-                                className="flex items-center px-2 sm:px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs sm:text-sm font-medium transition-colors border border-slate-600 text-slate-200"
-                            >
-                                <i className="fas fa-users mr-1 sm:mr-1.5"></i>
-                                <span className="max-w-[80px] sm:max-w-[120px] truncate">{currentClassroom.name}</span>
-                                <i className={`fas fa-chevron-down ml-1 sm:ml-2 text-xs transition-transform ${showClassroomMenu ? 'rotate-180' : ''}`}></i>
-                            </button>
-                            {showClassroomMenu && (
-                                <div className="absolute left-0 mt-2 w-56 bg-slate-800 rounded-xl shadow-xl border border-slate-700 py-2 z-50">
-                                    <div className="px-3 py-2 border-b border-slate-700 flex items-center justify-between">
-                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">班级列表</span>
-                                        <button
-                                            onClick={() => { setShowAddClassroom(true); setShowClassroomMenu(false); }}
-                                            className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
-                                        >
-                                            <i className="fas fa-plus mr-1"></i>新建
-                                        </button>
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_72%)]"></div>
+
+                <div className="relative z-[1] flex flex-col gap-3 p-3 sm:p-4">
+                    <div
+                        className="teacher-glass-light teacher-borderless flex flex-col gap-2.5 rounded-[28px] px-4 py-3 sm:px-5 sm:py-3.5"
+                        style={standalone ? { WebkitAppRegion: 'drag' } : undefined}
+                        onMouseDown={handleTitlebarMouseDown}
+                        onDoubleClick={handleTitlebarDoubleClick}
+                    >
+                        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="min-w-0">
+                                <div className="mb-1.5 inline-flex items-center gap-2 rounded-full border border-sky-200/20 bg-sky-300/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-sky-100">
+                                    <i className="fas fa-chalkboard"></i>
+                                    Classroom Monitor
+                                </div>
+                                <div className="flex items-center gap-2.5">
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/16 bg-white/10 text-sky-100 shadow-[0_12px_24px_rgba(56,189,248,0.14)]">
+                                        <i className="fas fa-chalkboard-teacher"></i>
                                     </div>
-                                    {Object.entries(classrooms).map(([id, cls]) => (
-                                        <div
-                                            key={id}
-                                            onClick={() => handleSwitchClassroom(id)}
-                                            className={`px-3 py-2 flex items-center justify-between group transition-colors cursor-pointer ${
-                                                id === currentClassroomId ? 'bg-blue-500/20 text-blue-300' : 'hover:bg-slate-700 text-slate-300'
-                                            }`}
-                                        >
-                                            <div className="flex items-center flex-1 min-w-0">
-                                                <i className="fas fa-chalkboard-teacher w-4 mr-2 text-slate-500"></i>
-                                                <span className="truncate text-sm">{cls.name}</span>
-                                                <span className="ml-2 text-xs text-slate-500">({cls.seats?.length || 0}座)</span>
-                                            </div>
-                                            {id !== currentClassroomId && (
-                                                <button
-                                                    onClick={(e) => handleDeleteClassroom(e, id)}
-                                                    className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-all p-1"
-                                                    title="删除班级"
-                                                >
-                                                    <i className="fas fa-trash-can text-xs"></i>
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))}
+                                    <div className="min-w-0">
+                                        <h2 className="truncate text-lg sm:text-xl font-black tracking-[0.04em] text-white">机房视图</h2>
+                                        <p className="mt-0.5 text-xs text-slate-300">查看终端在线、告警与座位编排。</p>
+                                    </div>
                                 </div>
-                            )}
-                        </div>
-                        <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-green-500/20 text-green-400 rounded-full text-[10px] sm:text-xs font-bold border border-green-500/30 shrink-0">{onlineIPs.length} 在线</span>
-                        <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-slate-700 text-slate-400 rounded-full text-[10px] sm:text-xs font-bold shrink-0">{seats.length} 座位</span>
-                    </div>
-                    <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end w-full sm:w-auto">
-                        <div className="flex rounded-lg overflow-hidden border border-slate-600">
-                            <button onClick={() => setViewMode('grid')} className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm transition-colors ${viewMode === 'grid' ? 'bg-slate-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`} title="网格视图"><i className="fas fa-table-cells"></i></button>
-                            <button onClick={() => setViewMode('list')} className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm transition-colors ${viewMode === 'list' ? 'bg-slate-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`} title="列表视图"><i className="fas fa-list"></i></button>
-                        </div>
-                        <button
-                            onClick={() => handlePodiumAtTopChange(!currentPodiumTop)}
-                            className="hidden sm:flex items-center px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors border border-slate-600"
-                            title={currentPodiumTop ? '讲台在上（点击切换为下）' : '讲台在下（点击切换为上）'}
-                        >
-                            <i className="fas fa-chalkboard mr-1.5"></i>{currentPodiumTop ? '讲台在上' : '讲台在下'}
-                        </button>
-                        <button onClick={handleAutoImport} disabled={autoImporting} className="flex items-center px-2 sm:px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors" title="将当前在线学生自动添加为座位">
-                            <i className={`fas ${autoImporting ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} mr-1 sm:mr-1.5`}></i><span className="hidden sm:inline">自动导入</span><span className="sm:hidden">导入</span>
-                        </button>
-                        <div className="relative" ref={moreMenuRef}>
-                            <button
-                                onClick={() => setShowMoreMenu(!showMoreMenu)}
-                                className={`flex items-center px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors border border-slate-600 ${showMoreMenu ? 'bg-slate-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}
+                            </div>
+                            <div
+                                className="flex flex-wrap items-center gap-2 lg:justify-end"
+                                style={standalone ? { WebkitAppRegion: 'no-drag' } : undefined}
+                                data-window-control={standalone ? 'true' : undefined}
                             >
-                                <i className="fas fa-ellipsis-vertical mr-1 sm:mr-1.5"></i><span className="hidden sm:inline">更多</span>
-                            </button>
-                            {showMoreMenu && (
-                                <div className="absolute right-0 mt-2 w-48 bg-slate-800 rounded-xl shadow-xl border border-slate-700 py-2 z-50">
-                                    <input ref={fileInputRef} type="file" accept=".csv,.txt,.json" className="hidden" onChange={(e) => { handleImportFile(e); setShowMoreMenu(false); }} />
-                                    <button onClick={() => { fileInputRef.current && fileInputRef.current.click(); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors flex items-center">
-                                        <i className="fas fa-file-import w-5 mr-2 text-center"></i>导入列表 (CSV/JSON)
-                                    </button>
-                                    <button onClick={() => { handleExportCsv(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors flex items-center">
-                                        <i className="fas fa-table-list w-5 mr-2 text-center"></i>导出列表 (CSV)
-                                    </button>
-                                    <button onClick={() => { handleExportJson(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors flex items-center">
-                                        <i className="fas fa-file-export w-5 mr-2 text-center"></i>导出当前班级 (JSON)
-                                    </button>
-                                    <div className="h-px bg-slate-700 my-1 mx-2"></div>
-                                    <button onClick={() => { handleDownloadTemplate(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors flex items-center">
-                                        <i className="fas fa-download w-5 mr-2 text-center"></i>下载 CSV 模板
+                                <span className="rounded-full border border-emerald-200/24 bg-emerald-300/14 px-3 py-1 text-[11px] font-bold text-emerald-100">
+                                    在线 {onlineSeatCount}
+                                </span>
+                                <span className="rounded-full border border-white/12 bg-white/8 px-3 py-1 text-[11px] font-bold text-slate-200">
+                                    离线 {offlineSeatCount}
+                                </span>
+                                <span className="rounded-full border border-white/12 bg-white/8 px-3 py-1 text-[11px] font-bold text-slate-200">
+                                    座位 {seats.length}
+                                </span>
+                                <span className="rounded-full border border-amber-200/20 bg-amber-300/10 px-3 py-1 text-[11px] font-bold text-amber-100">
+                                    告警 {alertSeatCount}
+                                </span>
+                                <span className="rounded-full border border-sky-200/20 bg-sky-300/10 px-3 py-1 text-[11px] font-bold text-sky-100">
+                                    编排 {gridRows}×{gridCols}
+                                </span>
+                                {standalone && <WindowControls />}
+                            </div>
+                        </div>
+                    <div
+                        className="mt-2.5 border-t border-white/10 pt-2.5"
+                        style={standalone ? { WebkitAppRegion: 'no-drag' } : undefined}
+                        data-window-control={standalone ? 'true' : undefined}
+                    >
+                        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
+                                <div className="relative" ref={classroomMenuRef}>
+                                    <button
+                                        onClick={() => setShowClassroomMenu(!showClassroomMenu)}
+                                        className="teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium"
+                                    >
+                                        <i className="fas fa-users mr-1.5"></i>
+                                        <span className="max-w-[150px] truncate">{currentClassroom.name}</span>
+                                        <i className={`fas fa-chevron-down ml-2 text-xs transition-transform ${showClassroomMenu ? 'rotate-180' : ''}`}></i>
                                     </button>
                                 </div>
-                            )}
+                                <div className="flex rounded-2xl overflow-hidden border border-white/10 bg-white/8">
+                                    <button onClick={() => setViewMode('grid')} className={`px-3 py-2 text-xs sm:text-sm transition-colors ${viewMode === 'grid' ? 'bg-sky-300/18 text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`} title="网格视图"><i className="fas fa-table-cells"></i></button>
+                                    <button onClick={() => setViewMode('list')} className={`px-3 py-2 text-xs sm:text-sm transition-colors ${viewMode === 'list' ? 'bg-sky-300/18 text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`} title="列表视图"><i className="fas fa-list"></i></button>
+                                </div>
+                                <button
+                                    onClick={() => handlePodiumAtTopChange(!currentPodiumTop)}
+                                    className="teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium"
+                                    title={currentPodiumTop ? '讲台在上，点击切换到底部' : '讲台在下，点击切换到顶部'}
+                                >
+                                    <i className="fas fa-chalkboard mr-1.5"></i>{currentPodiumTop ? '讲台在上' : '讲台在下'}
+                                </button>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap justify-end w-full xl:w-auto">
+                                <button onClick={handleAutoImport} disabled={autoImporting} className="teacher-liquid-primary flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors" title="将当前在线学生自动添加为座位">
+                                    <i className={`fas ${autoImporting ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} mr-1.5`}></i>自动导入
+                                </button>
+                                <div className="relative" ref={moreMenuRef}>
+                                    <button
+                                        onClick={() => setShowMoreMenu(!showMoreMenu)}
+                                        className={`teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium ${showMoreMenu ? 'text-white bg-white/18' : 'text-slate-300'}`}
+                                    >
+                                        <i className="fas fa-ellipsis-vertical mr-1.5"></i>更多
+                                    </button>
+                                </div>
+                                <button onClick={() => setShowAddForm(v => !v)} className="teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium">
+                                    <i className="fas fa-plus mr-1.5"></i>手动添加
+                                </button>
+                                {!standalone && (
+                                    <button onClick={handleClose} className="w-10 h-10 flex items-center justify-center rounded-2xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors border border-white/10 bg-white/8">
+                                        <i className="fas fa-xmark text-lg"></i>
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                        <button onClick={() => setShowAddForm(v => !v)} className="flex items-center px-2 sm:px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-xs sm:text-sm font-medium transition-colors border border-slate-600">
-                            <i className="fas fa-plus mr-1 sm:mr-1.5"></i><span className="hidden sm:inline">手动添加</span>
-                        </button>
-                        <button onClick={handleClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
-                            <i className="fas fa-xmark text-lg"></i>
-                        </button>
                     </div>
-                </div>
+                    </div>
 
                 {showAddForm && (
-                    <div className="px-3 sm:px-6 py-3 bg-slate-800/80 border-b border-slate-700 flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
-                        <input value={addIp} onChange={e => setAddIp(e.target.value)} placeholder="IP 地址" className="px-2 sm:px-3 py-1.5 bg-slate-700 border border-slate-600 rounded-lg text-xs sm:text-sm text-white placeholder-slate-500 outline-none focus:border-blue-400 w-24 sm:w-36" />
-                        <input value={addName} onChange={e => setAddName(e.target.value)} placeholder="学生姓名" className="px-2 sm:px-3 py-1.5 bg-slate-700 border border-slate-600 rounded-lg text-xs sm:text-sm text-white placeholder-slate-500 outline-none focus:border-blue-400 w-20 sm:w-32" />
-                        <input value={addStudentId} onChange={e => setAddStudentId(e.target.value)} placeholder="学号" className="px-2 sm:px-3 py-1.5 bg-slate-700 border border-slate-600 rounded-lg text-xs sm:text-sm text-white placeholder-slate-500 outline-none focus:border-blue-400 w-20 sm:w-32 hidden sm:block" />
-                        <span className="text-slate-400 text-xs sm:text-sm">行</span>
-                        <input type="number" min="1" value={addRow} onChange={e => setAddRow(e.target.value)} className="px-2 py-1.5 bg-slate-700 border border-slate-600 rounded-lg text-xs sm:text-sm text-white outline-none focus:border-blue-400 w-12 sm:w-16 text-center" />
-                        <span className="text-slate-400 text-xs sm:text-sm">列</span>
-                        <input type="number" min="1" value={addCol} onChange={e => setAddCol(e.target.value)} className="px-2 py-1.5 bg-slate-700 border border-slate-600 rounded-lg text-xs sm:text-sm text-white outline-none focus:border-blue-400 w-12 sm:w-16 text-center" />
-                        <button onClick={handleAddSeat} className="px-3 sm:px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs sm:text-sm font-bold transition-colors">添加</button>
-                        <button onClick={() => setShowAddForm(false)} className="px-2 sm:px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-xs sm:text-sm transition-colors">取消</button>
+                    <div className="teacher-glass rounded-[26px] px-4 py-3 sm:px-5">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                            <input value={addIp} onChange={e => setAddIp(e.target.value)} placeholder="IP 地址" className="w-28 rounded-2xl border border-white/14 bg-white/8 px-3 py-2 text-xs text-white placeholder-slate-400 outline-none focus:border-sky-300 sm:w-40 sm:text-sm" />
+                            <input value={addName} onChange={e => setAddName(e.target.value)} placeholder="学生姓名" className="w-24 rounded-2xl border border-white/14 bg-white/8 px-3 py-2 text-xs text-white placeholder-slate-400 outline-none focus:border-sky-300 sm:w-32 sm:text-sm" />
+                            <input value={addStudentId} onChange={e => setAddStudentId(e.target.value)} placeholder="学号" className="hidden w-28 rounded-2xl border border-white/14 bg-white/8 px-3 py-2 text-sm text-white placeholder-slate-400 outline-none focus:border-sky-300 sm:block" />
+                            <span className="text-xs text-slate-300 sm:text-sm">行</span>
+                            <input type="number" min="1" value={addRow} onChange={e => setAddRow(e.target.value)} className="w-14 rounded-2xl border border-white/14 bg-white/8 px-2 py-2 text-center text-xs text-white outline-none focus:border-sky-300 sm:w-16 sm:text-sm" />
+                            <span className="text-xs text-slate-300 sm:text-sm">列</span>
+                            <input type="number" min="1" value={addCol} onChange={e => setAddCol(e.target.value)} className="w-14 rounded-2xl border border-white/14 bg-white/8 px-2 py-2 text-center text-xs text-white outline-none focus:border-sky-300 sm:w-16 sm:text-sm" />
+                            <button onClick={handleAddSeat} className="teacher-liquid-primary rounded-2xl px-4 py-2 text-xs font-bold transition-colors sm:text-sm">添加</button>
+                            <button onClick={() => setShowAddForm(false)} className="teacher-liquid-button rounded-2xl px-3 py-2 text-xs transition-colors sm:text-sm">取消</button>
+                        </div>
                     </div>
                 )}
 
                 {showAddClassroom && (
-                    <div className="px-6 py-3 bg-slate-800/80 border-b border-slate-700 flex items-center gap-3 shrink-0">
-                        <i className="fas fa-users text-slate-400"></i>
-                        <input
-                            value={newClassName}
-                            onChange={e => setNewClassName(e.target.value)}
-                            placeholder="输入班级名称（如：高一1班）"
-                            className="flex-1 px-3 py-1.5 bg-slate-700 border border-slate-600 rounded-lg text-sm text-white placeholder-slate-500 outline-none focus:border-blue-400"
-                            autoFocus
-                            onKeyDown={e => { if (e.key === 'Enter') handleCreateClassroom(); if (e.key === 'Escape') setShowAddClassroom(false); }}
-                        />
-                        <button onClick={handleCreateClassroom} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-colors">创建</button>
-                        <button onClick={() => setShowAddClassroom(false)} className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-sm transition-colors">取消</button>
+                    <div className="teacher-glass rounded-[26px] px-4 py-3 sm:px-5">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/14 bg-white/10 text-sky-100">
+                                <i className="fas fa-users"></i>
+                            </div>
+                            <input
+                                value={newClassName}
+                                onChange={e => setNewClassName(e.target.value)}
+                                placeholder="输入班级名称，例如：高一 1 班"
+                                className="flex-1 rounded-2xl border border-white/14 bg-white/8 px-4 py-2 text-sm text-white placeholder-slate-400 outline-none focus:border-sky-300"
+                                autoFocus
+                                onKeyDown={e => { if (e.key === 'Enter') handleCreateClassroom(); if (e.key === 'Escape') setShowAddClassroom(false); }}
+                            />
+                            <div className="flex items-center gap-2 sm:justify-end">
+                                <button onClick={handleCreateClassroom} className="teacher-liquid-primary rounded-2xl px-4 py-2 text-sm font-bold transition-colors">创建</button>
+                                <button onClick={() => setShowAddClassroom(false)} className="teacher-liquid-button rounded-2xl px-3 py-2 text-sm transition-colors">取消</button>
+                            </div>
+                        </div>
                     </div>
                 )}
 
                 {importError && (
-                    <div className="px-6 py-2 bg-red-900/40 border-b border-red-700/50 flex items-center gap-3 shrink-0 text-sm text-red-300">
-                        <i className="fas fa-triangle-exclamation text-red-400"></i>
-                        <span>{importError}</span>
-                        <button onClick={() => setImportError(null)} className="ml-auto text-red-400 hover:text-red-200"><i className="fas fa-xmark"></i></button>
+                    <div className="rounded-[24px] border border-red-400/24 bg-red-400/12 px-4 py-3 text-sm text-red-100 shadow-[0_16px_34px_rgba(127,29,29,0.18)]">
+                        <div className="flex items-center gap-3">
+                            <i className="fas fa-triangle-exclamation text-red-300"></i>
+                            <span className="min-w-0 flex-1">{importError}</span>
+                            <button onClick={() => setImportError(null)} className="text-red-200 hover:text-white transition-colors"><i className="fas fa-xmark"></i></button>
+                        </div>
                     </div>
                 )}
 
-                <div className="px-6 py-2 bg-slate-900 border-b border-slate-800 flex items-center gap-5 text-xs text-slate-500 shrink-0">
+                <div className="teacher-glass-light teacher-borderless flex items-center gap-4 rounded-[24px] px-4 py-3 text-[11px] text-slate-300 sm:text-xs">
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"></span>在线</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-600 inline-block"></span>离线</span>
-                    <span className="flex items-center gap-1.5"><i className="fas fa-compress text-orange-400"></i>退出全屏</span>
-                    <span className="flex items-center gap-1.5"><i className="fas fa-eye-slash text-red-400"></i>切换页面</span>
-                    <span className="ml-auto text-slate-600">拖拽座位可调整位置 · 点击名称可编辑姓名和学号</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-500 inline-block"></span>离线</span>
+                    <span className="hidden sm:flex items-center gap-1.5"><i className="fas fa-compress text-orange-400"></i>退出全屏</span>
+                    <span className="hidden sm:flex items-center gap-1.5"><i className="fas fa-eye-slash text-red-400"></i>切换页面</span>
+                    <span className="ml-auto hidden text-slate-400 lg:inline">拖拽座位可调整位置，点击姓名可快速编辑学生信息。</span>
                 </div>
 
-                {viewMode === 'grid' && currentPodiumTop && (
-                    <div className="px-6 pt-4 shrink-0">
-                        <div className="flex justify-center">
-                            <div className="px-12 py-2 bg-slate-700 border border-slate-600 rounded-xl text-slate-400 text-sm font-bold tracking-widest">讲台</div>
-                        </div>
-                    </div>
-                )}
-
-                {viewMode === 'list' ? renderList() : (
-                    <div className="flex-1 overflow-auto p-3 sm:p-6">
-                        <div className="flex flex-col gap-3 items-center min-w-max">
-                            <div className="flex gap-2 sm:gap-3">
-                                <div className="w-6 shrink-0"></div>
-                                {Array.from({ length: gridCols + 1 }, (_, i) => (
-                                    <div key={i} className="min-w-[80px] sm:min-w-[100px] text-center text-[10px] sm:text-xs text-slate-600 font-mono">{i + 1}</div>
-                                ))}
+                <div className="flex-1 min-h-0">
+                    {viewMode === 'list' ? (
+                        <div className="h-full min-h-0">{renderList()}</div>
+                    ) : (
+                        <div className="teacher-glass-light teacher-borderless flex h-full min-h-0 flex-col rounded-[30px] p-2.5 sm:p-4">
+                            {currentPodiumTop && <div className="pb-3 shrink-0">{renderPodium()}</div>}
+                            <div className="min-h-0 flex-1 overflow-auto">
+                                <div className="flex flex-col gap-2.5 items-center min-w-max">
+                                    <div className="flex gap-2 sm:gap-2.5">
+                                        <div className="w-7 shrink-0"></div>
+                                        {Array.from({ length: gridCols }, (_, i) => (
+                                            <div key={i} className="min-w-[76px] sm:min-w-[96px] text-center text-[10px] sm:text-xs text-slate-400 font-mono">{i + 1}</div>
+                                        ))}
+                                    </div>
+                                    {renderGrid()}
+                                </div>
                             </div>
-                            {renderGrid()}
+                            {!currentPodiumTop && <div className="pt-3 shrink-0">{renderPodium()}</div>}
                         </div>
-                    </div>
+                    )}
+                </div>
+
+                {showClassroomMenu && createPortal(
+                    <div
+                        ref={classroomMenuPopupRef}
+                        className={`teacher-glass-dark rounded-[22px] py-2 ${(window.__getTeacherLayerClass?.('popup') || 'z-[10040]')} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`}
+                        style={getPopupStyle(classroomMenuRef, { width: 256, align: 'left' })}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-[0.18em]">班级列表</span>
+                            <button
+                                onClick={() => { setShowAddClassroom(true); setShowClassroomMenu(false); }}
+                                className="text-xs text-sky-300 hover:text-white transition-colors"
+                            >
+                                <i className="fas fa-plus mr-1"></i>新建
+                            </button>
+                        </div>
+                        {Object.entries(classrooms).map(([id, cls]) => (
+                            <div
+                                key={id}
+                                onClick={() => handleSwitchClassroom(id)}
+                                className={`px-3 py-2.5 flex items-center justify-between group transition-colors cursor-pointer ${
+                                    id === currentClassroomId ? 'bg-sky-300/16 text-sky-100' : 'hover:bg-white/10 text-slate-300'
+                                }`}
+                            >
+                                <div className="flex-1 min-w-0">
+                                    <div className="truncate text-sm font-medium">{cls.name}</div>
+                                    <div className="mt-0.5 text-xs text-slate-400">{cls.seats?.length || 0} 个座位</div>
+                                </div>
+                                {id !== currentClassroomId && (
+                                    <button
+                                        onClick={(e) => handleDeleteClassroom(e, id)}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-all p-1"
+                                        title="删除班级"
+                                    >
+                                        <i className="fas fa-trash-can text-xs"></i>
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>,
+                    document.body
                 )}
 
-                {viewMode === 'grid' && !currentPodiumTop && (
-                    <div className="px-6 pb-5 shrink-0">
-                        <div className="flex justify-center">
-                            <div className="px-12 py-2 bg-slate-700 border border-slate-600 rounded-xl text-slate-400 text-sm font-bold tracking-widest">讲台</div>
-                        </div>
-                    </div>
+                {showMoreMenu && createPortal(
+                    <div
+                        ref={moreMenuPopupRef}
+                        className={`teacher-glass-dark rounded-[22px] py-2 ${(window.__getTeacherLayerClass?.('popup') || 'z-[10040]')} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`}
+                        style={getPopupStyle(moreMenuRef, { width: 208, align: 'right' })}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <input ref={fileInputRef} type="file" accept=".csv,.txt,.json" className="hidden" onChange={(e) => { handleImportFile(e); setShowMoreMenu(false); }} />
+                        <button onClick={() => { fileInputRef.current && fileInputRef.current.click(); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center">
+                            <i className="fas fa-file-import w-5 mr-2 text-center"></i>导入列表
+                        </button>
+                        <button onClick={() => { handleExportCsv(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center">
+                            <i className="fas fa-table-list w-5 mr-2 text-center"></i>导出 CSV
+                        </button>
+                        <button onClick={() => { handleExportJson(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center">
+                            <i className="fas fa-file-export w-5 mr-2 text-center"></i>导出 JSON
+                        </button>
+                        <div className="h-px bg-white/10 my-1 mx-2"></div>
+                        <button onClick={() => { handleDownloadTemplate(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center">
+                            <i className="fas fa-download w-5 mr-2 text-center"></i>下载模板
+                        </button>
+                    </div>,
+                    document.body
                 )}
+            </div>
             </div>
 
             {editingId && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) setEditingId(null); }}>
-                    <div className="bg-slate-800 rounded-xl p-6 w-96 border border-slate-700 shadow-2xl">
-                        <h3 className="text-lg font-bold text-white mb-4">编辑座位信息</h3>
+                <div className={`fixed inset-0 bg-black/55 backdrop-blur-md flex items-center justify-center ${(window.__getTeacherLayerClass?.('modal') || 'z-[10020]')}`} onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) setEditingId(null); }}>
+                    <div className="teacher-glass-dark w-[92vw] max-w-md rounded-[30px] p-6 border border-white/14 shadow-[0_28px_80px_rgba(2,6,23,0.42)]">
+                        <div className="mb-5 flex items-center gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/14 bg-white/10 text-sky-100">
+                                <i className="fas fa-user-pen"></i>
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-black text-white">编辑座位信息</h3>
+                                <p className="text-sm text-slate-300">更新学生姓名和学号，不会影响 IP 与座位位置。</p>
+                            </div>
+                        </div>
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm text-slate-400 mb-1">学生姓名</label>
+                                <label className="block text-sm text-slate-300 mb-1">学生姓名</label>
                                 <input
                                     autoFocus
                                     value={editName}
                                     onChange={e => setEditName(e.target.value)}
-                                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 outline-none focus:border-blue-400"
+                                    className="w-full rounded-2xl border border-white/14 bg-white/8 px-4 py-3 text-white placeholder-slate-400 outline-none focus:border-sky-300"
                                     placeholder="输入学生姓名"
                                     onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingId(null); }}
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm text-slate-400 mb-1">学号</label>
+                                <label className="block text-sm text-slate-300 mb-1">学号</label>
                                 <input
                                     value={editStudentId}
                                     onChange={e => setEditStudentId(e.target.value)}
-                                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 outline-none focus:border-blue-400"
+                                    className="w-full rounded-2xl border border-white/14 bg-white/8 px-4 py-3 text-white placeholder-slate-400 outline-none focus:border-sky-300"
                                     placeholder="输入学号（可选）"
                                     onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingId(null); }}
                                 />
                             </div>
                         </div>
                         <div className="flex justify-end gap-2 mt-6">
-                            <button onClick={() => setEditingId(null)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-sm transition-colors">取消</button>
-                            <button onClick={commitEdit} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-colors">保存</button>
+                            <button onClick={() => setEditingId(null)} className="teacher-liquid-button rounded-2xl px-4 py-2 text-sm transition-colors">取消</button>
+                            <button onClick={commitEdit} className="teacher-liquid-primary rounded-2xl px-4 py-2 text-sm font-bold transition-colors">保存</button>
                         </div>
                     </div>
                 </div>

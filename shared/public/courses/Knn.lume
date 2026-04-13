@@ -2,7 +2,7 @@
 // 🎨 课程内容：特征分类的秘密 —— KNN 与 K-means（终极完全版）
 // ========================================================
 
-const { useRef, useState, useEffect } = React;
+const { useRef, useState, useEffect, useCallback } = React;
 
 // ================= 同步数据（组件外部定义）=================
 

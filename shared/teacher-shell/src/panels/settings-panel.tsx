@@ -1,9 +1,9 @@
-// ========================================================
+﻿// ========================================================
 // 共享设置面板组件（教师端两处复用）
 // ========================================================
 const { useEffect } = React;
 
-function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = 'z-50' }) {
+function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = (window.__getTeacherLayerClass?.('drawer') || 'z-[10030]') }) {
     const [newPwd, setNewPwd] = useState('');
     const [pwdStatus, setPwdStatus] = useState(null); // 'ok' | 'err' | null
     const [submissionDir, setSubmissionDir] = useState('');
@@ -102,20 +102,20 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = '
     };
 
     return (
-        <div className={`fixed inset-0 ${zIndex} flex justify-end`} onClick={onClose}>
+        <div className={`fixed inset-0 ${zIndex} flex justify-end bg-black/20 backdrop-blur-sm`} onClick={onClose}>
             <div
-                className="w-80 h-full bg-white shadow-2xl border-l border-slate-200 flex flex-col overflow-y-auto"
+                className="teacher-glass-drawer w-[22rem] h-full flex flex-col overflow-y-auto"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-                    <h3 className="font-bold text-slate-800 text-lg flex items-center">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-white/10">
+                    <h3 className="font-bold text-white text-lg flex items-center">
                         <i className="fas fa-gear mr-2 text-blue-500"></i> 课堂设置
                     </h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+                    <button onClick={onClose} className="text-slate-300 hover:text-white">
                         <i className="fas fa-xmark text-xl"></i>
                     </button>
                 </div>
-                <div className="flex-1 px-6 py-4 space-y-5">
+                <div className="flex-1 px-5 py-4 space-y-4">
                     {[
                         { key: 'forceFullscreen',     label: '强制学生全屏',  icon: 'fa-expand' },
                         { key: 'syncFollow',          label: '学生跟随翻页',  icon: 'fa-rotate' },
@@ -125,7 +125,7 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = '
                         { key: 'alertTabHidden',      label: '切换页面提醒',  icon: 'fa-eye-slash' },
                     ].map(({ key, label, icon }) => (
                         <div key={key} className="flex items-center justify-between">
-                            <span className="flex items-center text-slate-700 font-medium text-sm">
+                            <span className="flex items-center text-slate-100 font-medium text-sm">
                                 <i className={`fas ${icon} w-5 mr-2 text-slate-400`}></i>
                                 {label}
                             </span>
@@ -138,14 +138,14 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = '
                         </div>
                     ))}
                     
-                    <div className="border-t border-slate-200 pt-4">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center">
+                    <div className="border-t border-white/10 pt-4">
+                        <p className="text-xs font-bold text-sky-200/80 uppercase tracking-wider mb-3 flex items-center">
                             <i className="fas fa-up-down w-4 mr-2 text-slate-400"></i>
                             课件页面缩放
                         </p>
                         <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm text-slate-700 font-medium">缩放比例</span>
-                            <span className="text-sm font-mono text-slate-600">{Math.round(uiScaleValue * 100)}%</span>
+                            <span className="text-sm text-slate-100 font-medium">缩放比例</span>
+                            <span className="text-sm font-mono text-slate-300">{Math.round(uiScaleValue * 100)}%</span>
                         </div>
                         <input
                             type="range"
@@ -157,28 +157,28 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = '
                             className="w-full"
                         />
                         <div className="flex items-center justify-between mt-2">
-                            <span className="text-xs text-slate-500">80%</span>
+                            <span className="text-xs text-slate-400">80%</span>
                             <button
                                 onClick={() => onSettingsChange('uiScale', 1.0)}
-                                className="text-xs text-blue-600 hover:text-blue-700 font-bold"
+                                className="text-xs text-sky-300 hover:text-white font-bold"
                             >
                                 恢复默认
                             </button>
-                            <span className="text-xs text-slate-500">120%</span>
+                            <span className="text-xs text-slate-400">120%</span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                        <p className="text-xs text-slate-400 mt-2 leading-relaxed">
                             缩放 1280×720 课件画布显示大小，不影响顶栏/控件；学生端会跟随。
                         </p>
                     </div>
 
-                    <div className="border-t border-slate-200 pt-4">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center">
+                    <div className="border-t border-white/10 pt-4">
+                        <p className="text-xs font-bold text-sky-200/80 uppercase tracking-wider mb-3 flex items-center">
                             <i className="fas fa-up-down-left-right w-4 mr-2 text-slate-400"></i>
                             课件内容缩放
                         </p>
                         <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm text-slate-700 font-medium">缩放比例</span>
-                            <span className="text-sm font-mono text-slate-600">{Math.round(renderScaleValue * 100)}%</span>
+                            <span className="text-sm text-slate-100 font-medium">缩放比例</span>
+                            <span className="text-sm font-mono text-slate-300">{Math.round(renderScaleValue * 100)}%</span>
                         </div>
                         <input
                             type="range"
@@ -190,22 +190,22 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = '
                             className="w-full"
                         />
                         <div className="flex items-center justify-between mt-2">
-                            <span className="text-xs text-slate-500">60%</span>
+                            <span className="text-xs text-slate-400">60%</span>
                             <button
                                 onClick={() => onSettingsChange('renderScale', 0.96)}
-                                className="text-xs text-blue-600 hover:text-blue-700 font-bold"
+                                className="text-xs text-sky-300 hover:text-white font-bold"
                             >
                                 恢复默认
                             </button>
-                            <span className="text-xs text-slate-500">120%</span>
+                            <span className="text-xs text-slate-400">120%</span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                        <p className="text-xs text-slate-400 mt-2 leading-relaxed">
                             仅缩放课件内部内容，不改变画布大小。调小可减少溢出风险。
                         </p>
                     </div>
 
-                    <div className="border-t border-slate-200 pt-4">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center">
+                    <div className="border-t border-white/10 pt-4">
+                        <p className="text-xs font-bold text-sky-200/80 uppercase tracking-wider mb-3 flex items-center">
                             <i className="fas fa-lock w-4 mr-2 text-slate-400"></i>
                             学生端管理员密码
                         </p>
@@ -216,12 +216,12 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = '
                                 onChange={e => setNewPwd(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && handleSetPassword()}
                                 placeholder="输入新密码"
-                                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-slate-800"
+                                className="w-full px-3 py-2 text-sm border border-white/15 bg-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-300 text-white placeholder-slate-400"
                             />
                             <button
                                 onClick={handleSetPassword}
                                 disabled={!newPwd.trim()}
-                                className={`w-full py-2 rounded-lg text-sm font-bold transition-colors ${newPwd.trim() ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                                className={`w-full py-2 rounded-lg text-sm font-bold transition-colors ${newPwd.trim() ? 'teacher-liquid-primary' : 'bg-white/10 text-slate-500 cursor-not-allowed'}`}
                             >
                                 <i className="fas fa-paper-plane mr-2"></i>
                                 推送到所有学生端
@@ -239,8 +239,8 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = '
                         </div>
                     </div>
 
-                    <div className="border-t border-slate-200 pt-4">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center">
+                    <div className="border-t border-white/10 pt-4">
+                        <p className="text-xs font-bold text-sky-200/80 uppercase tracking-wider mb-3 flex items-center">
                             <i className="fas fa-folder-open w-4 mr-2 text-slate-400"></i>
                             学生提交内容存储位置
                         </p>
@@ -251,11 +251,11 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = '
                                     value={submissionDir}
                                     onChange={e => setSubmissionDir(e.target.value)}
                                     placeholder="输入存储目录路径"
-                                    className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-slate-800 font-mono"
+                                    className="flex-1 px-3 py-2 text-sm border border-white/15 bg-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-300 text-white placeholder-slate-400 font-mono"
                                 />
                                 <button
                                     onClick={handleSelectSubmissionDir}
-                                    className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-2"
+                                    className="px-3 py-2 teacher-liquid-button rounded-xl transition-colors flex items-center justify-center gap-2"
                                     title="选择目录"
                                 >
                                     <i className="fas fa-folder-open"></i>
@@ -264,7 +264,7 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = '
                             <button
                                 onClick={() => handleChangeSubmissionDir()}
                                 disabled={!submissionDir.trim()}
-                                className={`w-full py-2 rounded-lg text-sm font-bold transition-colors ${submissionDir.trim() ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                                className={`w-full py-2 rounded-lg text-sm font-bold transition-colors ${submissionDir.trim() ? 'teacher-liquid-primary' : 'bg-white/10 text-slate-500 cursor-not-allowed'}`}
                             >
                                 <i className="fas fa-save mr-2"></i>
                                 更新存储位置
@@ -282,23 +282,23 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = '
                         </div>
                     </div>
 
-                    <div className="border-t border-slate-200 pt-4">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center">
+                    <div className="border-t border-white/10 pt-4">
+                        <p className="text-xs font-bold text-sky-200/80 uppercase tracking-wider mb-3 flex items-center">
                             <i className="fas fa-file-alt w-4 mr-2 text-slate-400"></i>
                             系统日志
                         </p>
                         <button
                             onClick={handleToggleDevTools}
-                            className="w-full py-2 px-3 text-sm font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-2 mb-2"
+                            className="teacher-liquid-button w-full py-2 px-3 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 mb-2"
                         >
-                            <i className="fas fa-bug text-slate-500"></i>
+                            <i className="fas fa-bug text-slate-300"></i>
                             打开调试面板
                         </button>
                         <button
                             onClick={handleOpenLogDir}
-                            className="w-full py-2 px-3 text-sm font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-2"
+                            className="teacher-liquid-button w-full py-2 px-3 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
                         >
-                            <i className="fas fa-folder-open text-slate-500"></i>
+                            <i className="fas fa-folder-open text-slate-300"></i>
                             打开日志目录
                         </button>
                     </div>
@@ -307,3 +307,4 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = '
         </div>
     );
 }
+

@@ -12,13 +12,26 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout teacher
         uses: actions/checkout@v4
+
+      - name: Checkout core
+        uses: actions/checkout@v4
+        with:
+          repository: yc004/LumeSync-Core
+          path: core
+          fetch-depth: 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      - name: Configure core path
+        shell: pwsh
+        run: |
+          $corePath = Resolve-Path (Join-Path $PWD "core")
+          "LUMESYNC_CORE_DIR=$corePath" >> $env:GITHUB_ENV
 
       - name: Install Node dependencies
         shell: pwsh

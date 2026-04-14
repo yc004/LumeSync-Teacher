@@ -3775,6 +3775,31 @@ function ClassroomApp() {
   const settingsRef = useRef(settings);
   const studentCountPollRef = useRef(null);
   const activeCourseIdRef = useRef(null);
+
+  // 批注工具状态
+  const [annotateEnabled, setAnnotateEnabled] = useState(false);
+  const [annoTool, setAnnoTool] = useState('pen');
+  const [annoWidth, setAnnoWidth] = useState(4);
+  const [annoColor, setAnnoColor] = useState('#ef4444');
+  const [annoPopupType, setAnnoPopupType] = useState(null);
+  const annoCanvasRef = useRef(null);
+  const annoIsDrawingRef = useRef(false);
+  const annoLastPointRef = useRef(null);
+  const annoLastSendAtRef = useRef(0);
+  const annoSegmentsRef = useRef(new Map());
+  const annoPenRef = useRef({
+    tool: 'pen',
+    color: '#ef4444',
+    width: 4,
+    alpha: 1
+  });
+  const annoStrokePointsRef = useRef([]);
+  const annoMouseFallbackRef = useRef(false);
+  const shellPageRef = useRef(null);
+  const teacherStageHostRef = useRef(null);
+  const [annoStageRect, setAnnoStageRect] = useState(null);
+  const [annoStageUsesFallback, setAnnoStageUsesFallback] = useState(false);
+  const annoKey = (cid, slideIdx) => `${String(cid || '')}:${Number(slideIdx || 0)}`;
   const isStandaloneClassroomWindow = window.__LumeSyncIsStandaloneClassroomWindow?.() === true;
   useEffect(() => {
     settingsRef.current = settings;
@@ -3795,6 +3820,364 @@ function ClassroomApp() {
       });
     }
   }, []);
+
+  // ── 批注 canvas 工具函数 ──────────────────────────────────────────
+  const findCourseStageElement = host => {
+    if (!host) return null;
+    return host.querySelector('[data-lumesync-stage-root="true"]') || host.querySelector('.bg-white.text-slate-800.relative.shadow-2xl.flex.flex-col.rounded-2xl.overflow-hidden.shrink-0') || host.querySelector('div[style*="width: 1280px"][style*="height: 720px"]');
+  };
+  const buildFallbackStageRect = (shell, host) => {
+    if (!shell || !host) return null;
+    const shellRect = shell.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    const inset = 12; // .teacher-course-stage padding
+    const width = Math.max(1, hostRect.width - inset * 2);
+    const height = Math.max(1, hostRect.height - inset * 2);
+    return {
+      left: hostRect.left - shellRect.left + inset,
+      top: hostRect.top - shellRect.top + inset,
+      width,
+      height
+    };
+  };
+  const prepareAnnoCanvas = () => {
+    const canvas = annoCanvasRef.current;
+    if (!canvas) return null;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(rect.width * dpr));
+    const h = Math.max(1, Math.floor(rect.height * dpr));
+    const resized = canvas.width !== w || canvas.height !== h;
+    if (resized) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    return {
+      ctx,
+      baseW: rect.width,
+      baseH: rect.height,
+      resized
+    };
+  };
+  const drawAnnoSegmentOn = (ctx, baseW, baseH, seg) => {
+    if (!ctx || !seg || !Array.isArray(seg.points) || seg.points.length < 2) return;
+    const tool = seg.tool || 'pen';
+    ctx.globalAlpha = Number.isFinite(Number(seg.alpha)) ? Number(seg.alpha) : 1;
+    ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = seg.color || '#ef4444';
+    ctx.lineWidth = Number(seg.width) || 4;
+    const [p0, ...rest] = seg.points;
+    ctx.beginPath();
+    ctx.moveTo((p0[0] || 0) * baseW, (p0[1] || 0) * baseH);
+    for (const p of rest) ctx.lineTo((p[0] || 0) * baseW, (p[1] || 0) * baseH);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  };
+  const renderAnnoForCurrent = () => {
+    const m = prepareAnnoCanvas();
+    if (!m) return;
+    m.ctx.clearRect(0, 0, m.baseW, m.baseH);
+    const segs = annoSegmentsRef.current.get(annoKey(currentCourseId, currentSlide)) || [];
+    for (const seg of segs) drawAnnoSegmentOn(m.ctx, m.baseW, m.baseH, seg);
+  };
+  const getAnnoPoint = evt => {
+    const canvas = annoCanvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const vw = Math.max(1, rect.width);
+    const vh = Math.max(1, rect.height);
+    const xn = Math.max(0, Math.min(1, (evt.clientX - rect.left) / vw));
+    const yn = Math.max(0, Math.min(1, (evt.clientY - rect.top) / vh));
+    return {
+      x: xn * vw,
+      y: yn * vh,
+      xn,
+      yn
+    };
+  };
+  const emitAnnoSegment = (p0, p1) => {
+    if (!currentCourseId || !socketRef.current) return;
+    socketRef.current.emit('annotation:segment', {
+      courseId: currentCourseId,
+      slideIndex: currentSlide,
+      tool: annoPenRef.current.tool,
+      color: annoPenRef.current.color,
+      width: annoPenRef.current.width,
+      alpha: annoPenRef.current.alpha,
+      points: [[p0.xn, p0.yn], [p1.xn, p1.yn]]
+    });
+  };
+  const finalizeAnnoStroke = () => {
+    const pts = annoStrokePointsRef.current || [];
+    if (pts.length < 2) return;
+    const seg = {
+      tool: annoPenRef.current.tool,
+      color: annoPenRef.current.color,
+      width: annoPenRef.current.width,
+      alpha: annoPenRef.current.alpha,
+      points: pts
+    };
+    const key = annoKey(currentCourseId, currentSlide);
+    const arr = annoSegmentsRef.current.get(key) || [];
+    arr.push(seg);
+    if (arr.length > 5000) arr.splice(0, arr.length - 5000);
+    annoSegmentsRef.current.set(key, arr);
+    if (socketRef.current && currentCourseId) {
+      socketRef.current.emit('annotation:stroke', {
+        courseId: currentCourseId,
+        slideIndex: currentSlide,
+        ...seg
+      });
+    }
+  };
+  const stopAnnoDrawing = () => {
+    if (annoIsDrawingRef.current) finalizeAnnoStroke();
+    annoIsDrawingRef.current = false;
+    annoLastPointRef.current = null;
+    annoStrokePointsRef.current = [];
+    annoMouseFallbackRef.current = false;
+  };
+  const handleClearAnno = () => {
+    if (!currentCourseId) return;
+    annoSegmentsRef.current.set(annoKey(currentCourseId, currentSlide), []);
+    const m = prepareAnnoCanvas();
+    if (m) m.ctx.clearRect(0, 0, m.baseW, m.baseH);
+    if (socketRef.current) socketRef.current.emit('annotation:clear', {
+      courseId: currentCourseId,
+      slideIndex: currentSlide
+    });
+  };
+  const handleAnnoPointerDown = e => {
+    if (!annotateEnabled) return;
+    annoMouseFallbackRef.current = false;
+    const p = getAnnoPoint(e);
+    if (!p) return;
+    annoIsDrawingRef.current = true;
+    annoLastPointRef.current = p;
+    annoLastSendAtRef.current = 0;
+    annoStrokePointsRef.current = [[p.xn, p.yn]];
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (_) {}
+    let m = prepareAnnoCanvas();
+    if (m && m.resized) {
+      renderAnnoForCurrent();
+      m = prepareAnnoCanvas();
+    }
+    if (m) {
+      const tool = annoPenRef.current.tool;
+      m.ctx.globalAlpha = annoPenRef.current.alpha;
+      m.ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+      m.ctx.fillStyle = tool === 'eraser' ? '#000000' : annoPenRef.current.color;
+      const r = Math.max(1, (annoPenRef.current.width || 4) / 2);
+      m.ctx.beginPath();
+      m.ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      m.ctx.fill();
+      m.ctx.globalAlpha = 1;
+      m.ctx.globalCompositeOperation = 'source-over';
+    }
+  };
+  const handleAnnoPointerMove = e => {
+    if (!annoIsDrawingRef.current) return;
+    const p = getAnnoPoint(e);
+    const last = annoLastPointRef.current;
+    if (!p || !last) return;
+    let m = prepareAnnoCanvas();
+    if (m && m.resized) {
+      renderAnnoForCurrent();
+      m = prepareAnnoCanvas();
+    }
+    if (m) {
+      const tool = annoPenRef.current.tool;
+      m.ctx.globalAlpha = annoPenRef.current.alpha;
+      m.ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+      m.ctx.strokeStyle = tool === 'eraser' ? '#000000' : annoPenRef.current.color;
+      m.ctx.lineWidth = annoPenRef.current.width;
+      m.ctx.beginPath();
+      m.ctx.moveTo(last.x, last.y);
+      m.ctx.lineTo(p.x, p.y);
+      m.ctx.stroke();
+      m.ctx.globalAlpha = 1;
+      m.ctx.globalCompositeOperation = 'source-over';
+    }
+    annoStrokePointsRef.current.push([p.xn, p.yn]);
+    annoLastPointRef.current = p;
+    const now = Date.now();
+    if (now - (annoLastSendAtRef.current || 0) >= 20) {
+      annoLastSendAtRef.current = now;
+      emitAnnoSegment(last, p);
+    }
+  };
+  const handleAnnoMouseDown = e => {
+    if (!annotateEnabled) return;
+    if (annoIsDrawingRef.current) return;
+    annoMouseFallbackRef.current = true;
+    handleAnnoPointerDown(e);
+  };
+  const handleAnnoMouseMove = e => {
+    if (!annoMouseFallbackRef.current) return;
+    handleAnnoPointerMove(e);
+  };
+  const handleAnnoMouseUp = () => {
+    if (!annoMouseFallbackRef.current) return;
+    stopAnnoDrawing();
+  };
+
+  // 更新 annoPenRef
+  useEffect(() => {
+    const tool = annoTool || 'pen';
+    const alpha = tool === 'highlighter' ? 0.25 : tool === 'marker' ? 0.6 : 1;
+    annoPenRef.current = {
+      tool,
+      color: annoColor,
+      width: Math.min(Math.max(annoWidth, 1), 30),
+      alpha
+    };
+  }, [annoTool, annoColor, annoWidth]);
+
+  // 切换页面时重绘
+  useEffect(() => {
+    if (currentCourseId && socketRef.current) {
+      socketRef.current.emit('annotation:get', {
+        courseId: currentCourseId,
+        slideIndex: currentSlide
+      });
+    }
+    renderAnnoForCurrent();
+  }, [currentCourseId, currentSlide]);
+
+  // canvas resize 时重绘
+  useEffect(() => {
+    const canvas = annoCanvasRef.current;
+    if (!canvas) return;
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        stopAnnoDrawing();
+        renderAnnoForCurrent();
+      });
+    });
+    ro.observe(canvas);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [currentCourseId, currentSlide]);
+
+  // 对齐到 core 中真实的 16:9 舞台区域，避免教师端/学生端坐标基准不一致
+  useEffect(() => {
+    const shell = shellPageRef.current;
+    const host = teacherStageHostRef.current;
+    if (!shell || !host) return;
+    let raf = 0;
+    let ro = null;
+    const updateStageRect = () => {
+      const stageEl = findCourseStageElement(host);
+      if (!stageEl) {
+        const fallback = buildFallbackStageRect(shell, host);
+        if (fallback) {
+          setAnnoStageRect(fallback);
+          setAnnoStageUsesFallback(true);
+        }
+        return;
+      }
+      const shellRect = shell.getBoundingClientRect();
+      const stageRect = stageEl.getBoundingClientRect();
+      setAnnoStageRect({
+        left: stageRect.left - shellRect.left,
+        top: stageRect.top - shellRect.top,
+        width: stageRect.width,
+        height: stageRect.height
+      });
+      setAnnoStageUsesFallback(false);
+    };
+    const scheduleUpdate = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(updateStageRect);
+    };
+    scheduleUpdate();
+    ro = new ResizeObserver(scheduleUpdate);
+    ro.observe(shell);
+    ro.observe(host);
+    window.addEventListener('resize', scheduleUpdate);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', scheduleUpdate);
+    };
+  }, [currentCourseId, currentSlide, currentCourseData?.id, settings?.renderScale, settings?.uiScale]);
+  // ── 批注工具函数结束 ──────────────────────────────────────────────
+
+  const hasAnnoStageRect = annoStageRect && annoStageRect.width > 0 && annoStageRect.height > 0;
+  const annoCanvasBoxStyle = hasAnnoStageRect ? {
+    left: `${annoStageRect.left}px`,
+    top: `${annoStageRect.top}px`,
+    width: `${annoStageRect.width}px`,
+    height: `${annoStageRect.height}px`
+  } : {
+    left: '12px',
+    top: '12px',
+    right: '12px',
+    bottom: '12px'
+  };
+  useEffect(() => {
+    if (!isHost) return;
+    requestAnimationFrame(() => renderAnnoForCurrent());
+  }, [isHost, hasAnnoStageRect, annoStageRect?.left, annoStageRect?.top, annoStageRect?.width, annoStageRect?.height, currentCourseId, currentSlide]);
+
+  // 舞台节点可能晚于首帧挂载：如果当前仍是 fallback，持续短时重试直到拿到真实舞台矩形
+  useEffect(() => {
+    if (!isHost) return;
+    if (hasAnnoStageRect && !annoStageUsesFallback) return;
+    const shell = shellPageRef.current;
+    const host = teacherStageHostRef.current;
+    if (!shell || !host) return;
+    let raf = 0;
+    let attempts = 0;
+    const maxAttempts = 240; // ~4 秒（60fps）
+    const tryResolve = () => {
+      attempts += 1;
+      const stageEl = findCourseStageElement(host);
+      if (!stageEl) {
+        if (!hasAnnoStageRect) {
+          const fallback = buildFallbackStageRect(shell, host);
+          if (fallback) {
+            setAnnoStageRect(fallback);
+            setAnnoStageUsesFallback(true);
+          }
+        }
+        if (attempts < maxAttempts) raf = requestAnimationFrame(tryResolve);
+        return;
+      }
+      const shellRect = shell.getBoundingClientRect();
+      const stageRect = stageEl.getBoundingClientRect();
+      if (stageRect.width <= 0 || stageRect.height <= 0) {
+        if (attempts < maxAttempts) raf = requestAnimationFrame(tryResolve);
+        return;
+      }
+      setAnnoStageRect({
+        left: stageRect.left - shellRect.left,
+        top: stageRect.top - shellRect.top,
+        width: stageRect.width,
+        height: stageRect.height
+      });
+      setAnnoStageUsesFallback(false);
+    };
+    raf = requestAnimationFrame(tryResolve);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [isHost, hasAnnoStageRect, annoStageUsesFallback, currentCourseId, currentSlide, currentCourseData?.id]);
   const handleSettingsChange = (key, value) => {
     let next = {
       ...settingsRef.current,
@@ -3990,6 +4373,42 @@ function ClassroomApp() {
       fetch('/api/student-log').then(r => r.json()).then(d => {
         setSharedStudentLog(d.log || []);
       }).catch(() => {});
+
+      // 批注：接收服务端广播的笔画（教师自己发出后服务端会回广播）
+      socketRef.current.on('annotation:stroke', data => {
+        if (!data?.courseId) return;
+        const key = annoKey(data.courseId, data.slideIndex);
+        const arr = annoSegmentsRef.current.get(key) || [];
+        const seg = {
+          tool: data.tool,
+          color: data.color,
+          width: data.width,
+          alpha: data.alpha,
+          points: data.points
+        };
+        arr.push(seg);
+        if (arr.length > 5000) arr.splice(0, arr.length - 5000);
+        annoSegmentsRef.current.set(key, arr);
+        if (key === annoKey(currentCourseId, currentSlide)) {
+          requestAnimationFrame(() => renderAnnoForCurrent());
+        }
+      });
+      socketRef.current.on('annotation:clear', data => {
+        if (!data?.courseId) return;
+        const key = annoKey(data.courseId, data.slideIndex);
+        annoSegmentsRef.current.set(key, []);
+        if (key === annoKey(currentCourseId, currentSlide)) {
+          requestAnimationFrame(() => renderAnnoForCurrent());
+        }
+      });
+      socketRef.current.on('annotation:state', data => {
+        if (!data?.courseId) return;
+        const key = annoKey(data.courseId, data.slideIndex);
+        annoSegmentsRef.current.set(key, Array.isArray(data.segments) ? data.segments : []);
+        if (key === annoKey(currentCourseId, currentSlide)) {
+          requestAnimationFrame(() => renderAnnoForCurrent());
+        }
+      });
     };
     setupSocket();
     return () => {
@@ -4267,6 +4686,7 @@ function ClassroomApp() {
     courseId: currentCourseId,
     onEndCourse: isHost ? handleEndCourse : null
   }, /*#__PURE__*/React.createElement("div", {
+    ref: shellPageRef,
     className: "teacher-shell-page h-full overflow-hidden font-sans select-none relative"
   }, /*#__PURE__*/React.createElement("div", {
     className: "teacher-floating-topbar teacher-glass-dark teacher-glass-enter flex items-center justify-between",
@@ -4322,6 +4742,7 @@ function ClassroomApp() {
   }), sharedStudentLog.length > 0 && /*#__PURE__*/React.createElement("span", {
     className: "absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold"
   }, sharedStudentLog.length > 99 ? '99' : sharedStudentLog.length)), /*#__PURE__*/React.createElement(WindowControls, null))), /*#__PURE__*/React.createElement("div", {
+    ref: teacherStageHostRef,
     className: "teacher-course-stage"
   }, /*#__PURE__*/React.createElement(window.LumeSyncRenderEngine.CourseStage, {
     courseId: currentCourseId,
@@ -4341,7 +4762,117 @@ function ClassroomApp() {
     renderTeacherOverlays: false,
     hideTopBar: true,
     hideBottomBar: true
+  })), isHost && /*#__PURE__*/React.createElement("canvas", {
+    ref: annoCanvasRef,
+    className: "absolute z-[9980]",
+    style: {
+      ...annoCanvasBoxStyle,
+      display: 'block',
+      pointerEvents: annotateEnabled ? 'auto' : 'none',
+      touchAction: 'none',
+      cursor: annotateEnabled ? annoTool === 'eraser' ? 'cell' : 'crosshair' : 'default',
+      borderRadius: '24px'
+    },
+    onPointerDown: handleAnnoPointerDown,
+    onPointerMove: handleAnnoPointerMove,
+    onPointerUp: () => stopAnnoDrawing(),
+    onPointerCancel: () => stopAnnoDrawing(),
+    onPointerLeave: () => stopAnnoDrawing(),
+    onMouseDown: handleAnnoMouseDown,
+    onMouseMove: handleAnnoMouseMove,
+    onMouseUp: handleAnnoMouseUp,
+    onMouseLeave: handleAnnoMouseUp
+  }), isHost && /*#__PURE__*/React.createElement("div", {
+    className: "absolute left-6 top-1/2 -translate-y-1/2 z-[9991] flex flex-col gap-2"
+  }, [{
+    icon: 'fa-pen',
+    title: '开启/关闭批注',
+    active: annotateEnabled,
+    onClick: () => setAnnotateEnabled(v => !v)
+  }, {
+    icon: 'fa-grip-lines',
+    title: '画笔粗细',
+    active: annoPopupType === 'width',
+    onClick: () => {
+      setAnnotateEnabled(true);
+      setAnnoPopupType(v => v === 'width' ? null : 'width');
+    }
+  }, {
+    icon: 'fa-palette',
+    title: '画笔颜色',
+    active: annoPopupType === 'color',
+    onClick: () => {
+      setAnnotateEnabled(true);
+      setAnnoPopupType(v => v === 'color' ? null : 'color');
+    }
+  }, {
+    icon: 'fa-trash-can',
+    title: '清空本页',
+    active: false,
+    onClick: handleClearAnno
+  }, {
+    icon: 'fa-xmark',
+    title: '退出批注',
+    active: false,
+    danger: true,
+    onClick: () => {
+      stopAnnoDrawing();
+      setAnnotateEnabled(false);
+      setAnnoPopupType(null);
+    }
+  }].map(btn => /*#__PURE__*/React.createElement("button", {
+    key: btn.icon,
+    title: btn.title,
+    onClick: btn.onClick,
+    className: `w-9 h-9 rounded-xl text-sm flex items-center justify-center transition-colors ${btn.danger ? 'bg-red-700/80 hover:bg-red-600 text-white' : btn.active ? 'bg-blue-500 text-white' : 'bg-slate-700 hover:bg-slate-600 text-white'}`
+  }, /*#__PURE__*/React.createElement("i", {
+    className: `fas ${btn.icon}`
+  }))), annoPopupType === 'width' && /*#__PURE__*/React.createElement("div", {
+    className: "absolute left-12 top-8 w-52 bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl p-3 shadow-xl z-10"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-600 font-bold text-sm"
+  }, "\u7C97\u7EC6"), /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-500 font-mono text-xs bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg"
+  }, annoWidth, "px")), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "2",
+    max: "20",
+    value: annoWidth,
+    onChange: e => setAnnoWidth(Number(e.target.value)),
+    className: "w-full"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 flex gap-2 flex-wrap"
+  }, ['pen', 'marker', 'highlighter', 'eraser'].map(t => /*#__PURE__*/React.createElement("button", {
+    key: t,
+    onClick: () => setAnnoTool(t),
+    className: `px-2 py-1 rounded-lg text-xs font-bold border transition-colors ${annoTool === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`
+  }, t === 'pen' ? '钢笔' : t === 'marker' ? '记号笔' : t === 'highlighter' ? '荧光笔' : '橡皮')))), annoPopupType === 'color' && /*#__PURE__*/React.createElement("div", {
+    className: "absolute left-12 top-16 w-52 bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl p-3 shadow-xl z-10"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-600 font-bold text-sm"
+  }, "\u989C\u8272"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: annoColor,
+    disabled: annoTool === 'eraser',
+    onChange: e => setAnnoColor(e.target.value),
+    className: `w-10 h-7 p-0 border-0 bg-transparent ${annoTool === 'eraser' ? 'opacity-40 cursor-not-allowed' : ''}`
   })), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap gap-2"
+  }, ['#ef4444', '#f97316', '#facc15', '#22c55e', '#3b82f6', '#a855f7', '#0f172a', '#ffffff'].map(c => /*#__PURE__*/React.createElement("button", {
+    key: c,
+    onClick: () => setAnnoColor(c),
+    disabled: annoTool === 'eraser',
+    className: `w-7 h-7 rounded-full border transition-all ${annoTool === 'eraser' ? 'opacity-40 cursor-not-allowed border-slate-200' : annoColor.toLowerCase() === c.toLowerCase() ? 'border-blue-600 ring-2 ring-blue-300' : 'border-slate-200 hover:border-slate-300'}`,
+    style: {
+      background: c
+    }
+  }))))), annotateEnabled && isHost && /*#__PURE__*/React.createElement("div", {
+    className: "absolute top-16 left-1/2 -translate-x-1/2 z-[9992] px-3 py-1.5 rounded-xl bg-blue-600/90 text-white text-xs font-bold border border-blue-300 shadow-lg backdrop-blur-sm pointer-events-none"
+  }, "\u6807\u6CE8\u6A21\u5F0F\uFF1A\u62D6\u52A8\u7ED8\u5236"), /*#__PURE__*/React.createElement("div", {
     className: "teacher-floating-dock teacher-glass-light teacher-glass-enter flex items-center gap-4"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => goToSlide(currentSlide - 1),

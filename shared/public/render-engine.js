@@ -2012,6 +2012,7 @@ function SyncClassroom({
     ref: stageWrapRef,
     className: "relative w-full h-full flex items-center justify-center overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
+    "data-lumesync-stage-root": "true",
     className: "bg-white text-slate-800 relative shadow-2xl flex flex-col rounded-2xl overflow-hidden shrink-0",
     style: {
       width: '1280px',

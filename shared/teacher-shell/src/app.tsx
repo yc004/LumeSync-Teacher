@@ -14,21 +14,61 @@ const TEACHER_LAYER_CLASS = Object.freeze({
 
 const getTeacherLayerClass = (key) => window.__LumeSyncLayer?.[key] || TEACHER_LAYER_CLASS[key] || '';
 window.__getTeacherLayerClass = getTeacherLayerClass;
-window.__LumeSyncIsStandaloneClassroomWindow = () => {
-    return window.__LumeSyncWindowMode === 'classroom';
+
+const CLASSROOM_WINDOW_KEY = 'lumesync-classroom-window-open';
+
+window.__LumeSyncIsStandaloneClassroomWindow = () => window.__LumeSyncWindowMode === 'classroom';
+window.__LumeSyncClassroomWindowOpen = false;
+
+const syncClassroomWindowFlag = () => {
+    try {
+        window.__LumeSyncClassroomWindowOpen = localStorage.getItem(CLASSROOM_WINDOW_KEY) === '1';
+    } catch (_) {
+        window.__LumeSyncClassroomWindowOpen = false;
+    }
 };
+
+const markClassroomWindowOpened = () => {
+    window.__LumeSyncClassroomWindowOpen = true;
+    try { localStorage.setItem(CLASSROOM_WINDOW_KEY, '1'); } catch (_) {}
+};
+
+const markClassroomWindowClosed = () => {
+    window.__LumeSyncClassroomWindowOpen = false;
+    try { localStorage.removeItem(CLASSROOM_WINDOW_KEY); } catch (_) {}
+};
+
+syncClassroomWindowFlag();
+
 window.__LumeSyncOpenClassroomWindow = () => {
+    syncClassroomWindowFlag();
     if (typeof window.openWindow === 'function') {
+        if (!window.__LumeSyncClassroomWindowOpen) {
+            markClassroomWindowOpened();
+        }
         window.openWindow('', {
             mode: 'classroom',
             width: 1800,
             height: 1350,
             title: '机房视图'
         });
-        return;
     }
 };
 
+if (window.__LumeSyncIsStandaloneClassroomWindow?.()) {
+    markClassroomWindowOpened();
+    window.addEventListener('beforeunload', markClassroomWindowClosed);
+    window.addEventListener('pagehide', markClassroomWindowClosed);
+    window.addEventListener('unload', markClassroomWindowClosed);
+}
+
+window.addEventListener('storage', (event) => {
+    if (event.key === CLASSROOM_WINDOW_KEY) {
+        syncClassroomWindowFlag();
+    }
+});
+
+window.__LumeSyncCloseClassroomWindow = markClassroomWindowClosed;
 const ensureTeacherShellStyles = () => {
     window.__LumeSyncLayer = { ...(window.__LumeSyncLayer || {}), ...TEACHER_LAYER_CLASS };
     if (document.getElementById('teacher-shell-liquid-style')) return;
@@ -322,10 +362,13 @@ function ClassroomApp() {
         alertLeave: true,
         alertFullscreenExit: true,
         alertTabHidden: true,
+        monitorEnabled: false,
+        monitorIntervalSec: 10,
     };
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [studentCount, setStudentCount] = useState(0);
     const [sharedStudentLog, setSharedStudentLog] = useState([]);
+    const [studentScreenshots, setStudentScreenshots] = useState({});
     const [studentInfo, setStudentInfo] = useState({ ip: '', name: '', studentId: '' });
     const socketRef = useRef(null);
     const courseCatalogRef = useRef([]);
@@ -480,8 +523,9 @@ function ClassroomApp() {
                 setCurrentCourseId(null);
                 setCurrentCourseData(null);
                 setCurrentSlide(0);
+                setStudentScreenshots({});
                 window.CourseData = null;
-                window.CameraManager.release();
+                window.CameraManager?.release?.();
                 if (window._onCamActive) window._onCamActive(false);
                 window.electronAPI?.classEnded();
             });
@@ -499,6 +543,33 @@ function ClassroomApp() {
 
             socketRef.current.on('student-log-entry', (entry) => {
                 setSharedStudentLog(prev => [...prev, entry].slice(-500));
+            });
+
+            socketRef.current.on('student:screenshot', (payload) => {
+                if (!payload?.ip || !payload?.dataUrl) return;
+                setStudentScreenshots(prev => ({ ...prev, [payload.ip]: payload }));
+            });
+
+            socketRef.current.on('student:screenshot:state', (data) => {
+                const next = {};
+                for (const item of (data?.screenshots || [])) {
+                    if (item?.ip && item?.dataUrl) next[item.ip] = item;
+                }
+                setStudentScreenshots(next);
+            });
+
+            socketRef.current.on('student:screenshot:clear', (data) => {
+                const ip = data?.ip;
+                if (!ip) return;
+                setStudentScreenshots(prev => {
+                    const next = { ...prev };
+                    delete next[ip];
+                    return next;
+                });
+            });
+
+            socketRef.current.on('student:screenshot:reset', () => {
+                setStudentScreenshots({});
             });
 
             fetch('/api/student-log').then(r => r.json()).then(d => {
@@ -662,6 +733,10 @@ function ClassroomApp() {
                 }}
                 socket={socketRef.current}
                 studentLog={sharedStudentLog}
+                studentScreenshots={studentScreenshots}
+                monitorEnabled={!!settings?.monitorEnabled}
+                monitorIntervalSec={settings?.monitorIntervalSec || 10}
+                onMonitorToggle={() => handleSettingsChange('monitorEnabled', !settingsRef.current?.monitorEnabled)}
                 podiumAtTop={settings && settings.podiumAtTop}
                 onPodiumAtTopChange={(v) => handleSettingsChange('podiumAtTop', !!v)}
             />

@@ -554,6 +554,10 @@ function ClassroomView({
   onClose,
   socket,
   studentLog,
+  studentScreenshots = {},
+  monitorEnabled = false,
+  monitorIntervalSec = 10,
+  onMonitorToggle,
   podiumAtTop,
   onPodiumAtTopChange,
   standalone = false
@@ -634,6 +638,7 @@ function ClassroomView({
   const [viewMode, setViewMode] = useState('grid');
   const [importError, setImportError] = useState(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [previewSeat, setPreviewSeat] = useState(null);
   const fileInputRef = useRef(null);
   const moreMenuRef = useRef(null);
   const moreMenuPopupRef = useRef(null);
@@ -1192,59 +1197,109 @@ function ClassroomView({
       width
     };
   };
+  const parseCapturedAt = value => {
+    if (!value && value !== 0) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    if (typeof value === 'number') {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const text = String(value).trim();
+    if (!text) return null;
+    if (/^\d+$/.test(text)) {
+      const num = Number(text);
+      const d = new Date(num < 1e12 ? num * 1000 : num);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(text);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  const formatCapturedTime = value => {
+    const d = parseCapturedAt(value);
+    return d ? d.toLocaleTimeString('zh-CN', {
+      hour12: false
+    }) : '';
+  };
+  const formatCapturedDateTime = value => {
+    const d = parseCapturedAt(value);
+    return d ? d.toLocaleString('zh-CN', {
+      hour12: false
+    }) : '';
+  };
   const renderSeat = seat => {
     const isOnline = onlineIPs.includes(seat.ip);
     const alerts = recentAlerts[seat.ip] || [];
     const lastAlert = alerts[alerts.length - 1];
+    const screenshot = studentScreenshots[seat.ip] || null;
     const isDragging = dragId === seat.id;
     return /*#__PURE__*/React.createElement("div", {
       key: seat.id,
       draggable: true,
       onDragStart: e => handleDragStart(e, seat.id),
       onDragEnd: handleDragEnd,
-      className: `relative flex min-h-[78px] sm:min-h-[94px] flex-col justify-between overflow-hidden rounded-[20px] border px-2 py-2 sm:px-2.5 sm:py-2.5 cursor-grab select-none transition-all duration-200 group
+      onClick: () => screenshot?.dataUrl && setPreviewSeat({
+        seat,
+        screenshot
+      }),
+      className: `relative aspect-video overflow-hidden rounded-[20px] border cursor-grab select-none transition-all duration-200 group
                     ${isDragging ? 'opacity-40 scale-[0.98]' : 'hover:-translate-y-0.5'}
-                    ${isOnline ? 'bg-gradient-to-br from-emerald-300/22 via-cyan-300/16 to-white/10 border-emerald-200/35 shadow-[0_22px_40px_rgba(16,185,129,0.12)]' : 'bg-gradient-to-br from-white/14 via-white/8 to-slate-900/8 border-white/14 shadow-[0_18px_34px_rgba(15,23,42,0.18)] hover:border-sky-200/24'}`
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.16),transparent_55%)]"
+                    ${lastAlert ? 'ring-2 ring-amber-300/70 border-amber-200/50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_22px_40px_rgba(251,191,36,0.18)]' : isOnline ? 'ring-1 ring-emerald-300/45 bg-gradient-to-br from-emerald-300/22 via-cyan-300/16 to-white/10 border-emerald-200/35 shadow-[0_22px_40px_rgba(16,185,129,0.18)]' : 'bg-gradient-to-br from-white/14 via-white/8 to-slate-900/8 border-white/14 shadow-[0_18px_34px_rgba(15,23,42,0.18)] hover:border-sky-200/24'} ${screenshot?.dataUrl ? 'cursor-zoom-in' : ''}`
+    }, screenshot?.dataUrl ? /*#__PURE__*/React.createElement("img", {
+      src: screenshot.dataUrl,
+      alt: `${seat.name || seat.ip} screenshot`,
+      className: "absolute inset-0 h-full w-full object-cover"
+    }) : /*#__PURE__*/React.createElement("div", {
+      className: "absolute inset-0 flex items-center justify-center bg-slate-950/80 text-center text-[10px] text-slate-400 sm:text-[11px]"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", {
+      className: "fas fa-desktop mb-2 block text-lg text-slate-500"
+    }), /*#__PURE__*/React.createElement("div", null, monitorEnabled ? '等待截图…' : '监控已关闭'))), /*#__PURE__*/React.createElement("div", {
+      className: "pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/45"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/10"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/50 to-transparent"
     }), /*#__PURE__*/React.createElement("button", {
       onClick: () => handleDelete(seat.id),
-      className: "absolute top-1.5 right-1.5 z-10 hidden h-5 w-5 items-center justify-center rounded-full border border-white/12 bg-white/10 text-[10px] text-slate-300 transition-colors hover:bg-red-500 hover:text-white group-hover:flex sm:h-6 sm:w-6 sm:text-xs"
+      className: "absolute top-2 right-2 z-20 hidden h-6 w-6 items-center justify-center rounded-full border border-white/15 bg-black/35 text-[10px] text-white/85 backdrop-blur-sm transition-colors hover:bg-red-500 hover:text-white group-hover:flex"
     }, /*#__PURE__*/React.createElement("i", {
-      className: "fas fa-xmark text-[8px] sm:text-[10px]"
+      className: "fas fa-xmark text-[10px]"
     })), /*#__PURE__*/React.createElement("div", {
-      className: "relative z-[1] flex items-start justify-between gap-2"
+      className: "absolute left-2 top-2 z-10 flex items-start justify-between gap-2 right-10"
     }, /*#__PURE__*/React.createElement("div", {
       className: "min-w-0"
     }, /*#__PURE__*/React.createElement("div", {
-      className: `mb-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] sm:text-[10px] ${isOnline ? 'border-emerald-200/35 bg-emerald-300/16 text-emerald-100' : 'border-white/12 bg-white/8 text-slate-300'}`
+      className: `mb-1 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] backdrop-blur-sm ${isOnline ? 'border-emerald-200/35 bg-emerald-300/16 text-emerald-100' : 'border-white/12 bg-black/25 text-slate-200'}`
     }, /*#__PURE__*/React.createElement("span", {
-      className: `h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.8)]' : 'bg-slate-500'}`
+      className: `h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.8)]' : 'bg-slate-400'}`
     }), isOnline ? 'ONLINE' : 'OFFLINE'), /*#__PURE__*/React.createElement("div", {
-      className: "truncate text-[10px] font-black tracking-[0.04em] text-white sm:text-[13px] cursor-text",
+      className: "truncate text-[11px] font-black tracking-[0.04em] text-white sm:text-[13px] cursor-text drop-shadow",
       title: `${seat.name || '未命名'}\n${seat.studentId ? '学号: ' + seat.studentId : ''}\n${seat.ip}`,
       onDoubleClick: () => startEdit(seat)
     }, seat.name || /*#__PURE__*/React.createElement("span", {
-      className: "italic text-slate-400"
+      className: "italic text-slate-300"
     }, "\u53CC\u51FB\u547D\u540D")), seat.studentId && /*#__PURE__*/React.createElement("div", {
-      className: "mt-0.5 truncate text-[8px] font-medium text-sky-200/90 sm:text-[9px]"
+      className: "mt-0.5 truncate text-[9px] font-medium text-sky-100/95 drop-shadow"
     }, "#", seat.studentId)), /*#__PURE__*/React.createElement("div", {
-      className: "rounded-full border border-white/10 bg-white/8 px-2 py-0.5 text-[9px] font-mono text-slate-300"
+      className: "rounded-full border border-white/12 bg-black/30 px-2 py-0.5 text-[9px] font-mono text-white/85 backdrop-blur-sm"
     }, seat.row, "-", seat.col)), /*#__PURE__*/React.createElement("div", {
-      className: "relative z-[1] mt-2 space-y-1"
+      className: "absolute left-2 right-2 bottom-2 z-10 space-y-1.5"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "truncate rounded-xl border border-white/10 bg-black/10 px-2 py-1.5 font-mono text-[8px] text-slate-300 sm:text-[9px]"
-    }, seat.ip), lastAlert && alertIcons[lastAlert.type] ? /*#__PURE__*/React.createElement("div", {
-      className: `inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[8px] font-medium sm:text-[9px] ${alertIcons[lastAlert.type].color} bg-black/10 border border-white/8`
+      className: "truncate rounded-xl border border-white/10 bg-black/35 px-2 py-1.5 font-mono text-[8px] text-white/90 backdrop-blur-sm sm:text-[9px]"
+    }, seat.ip), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-between gap-2"
+    }, lastAlert && alertIcons[lastAlert.type] ? /*#__PURE__*/React.createElement("div", {
+      className: `inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[8px] font-medium sm:text-[9px] ${alertIcons[lastAlert.type].color} bg-black/35 border border-white/10 backdrop-blur-sm`
     }, /*#__PURE__*/React.createElement("i", {
       className: `fas ${alertIcons[lastAlert.type].icon}`
     }), /*#__PURE__*/React.createElement("span", {
       className: "truncate"
     }, alertIcons[lastAlert.type].label)) : /*#__PURE__*/React.createElement("div", {
-      className: "inline-flex items-center gap-1 rounded-full border border-white/8 bg-black/10 px-2 py-1 text-[8px] text-slate-400 sm:text-[9px]"
+      className: "inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[8px] text-slate-200 backdrop-blur-sm sm:text-[9px]"
     }, /*#__PURE__*/React.createElement("i", {
       className: "fas fa-wave-square"
-    }), /*#__PURE__*/React.createElement("span", null, "\u72B6\u6001\u6B63\u5E38"))));
+    }), /*#__PURE__*/React.createElement("span", null, screenshot?.capturedAt ? '截图已更新' : '状态正常')), /*#__PURE__*/React.createElement("div", {
+      className: "text-[8px] text-white/70 sm:text-[9px] drop-shadow text-right truncate"
+    }, formatCapturedTime(screenshot?.capturedAt)))));
   };
   const renderList = () => /*#__PURE__*/React.createElement("div", {
     className: "teacher-glass-light flex-1 overflow-hidden rounded-[28px] border border-white/10"
@@ -1342,7 +1397,7 @@ function ClassroomView({
           key: `${vr}-${c}`,
           onDragOver: e => handleDragOverCell(e, r, c),
           onDrop: e => handleDropCell(e, r, c),
-          className: `min-w-[76px] sm:min-w-[96px] min-h-[78px] sm:min-h-[94px] rounded-[20px] transition-all duration-150
+          className: `min-w-[160px] sm:min-w-[220px] aspect-video rounded-[20px] transition-all duration-150
                             ${isOver && dragId ? 'bg-sky-400/16 border-2 border-sky-200/50 border-dashed' : ''}
                             ${!seat && !isOver ? 'border border-dashed border-white/12 bg-white/[0.03]' : ''}`
         }, seat ? renderSeat(seat) : null));
@@ -1464,6 +1519,12 @@ function ClassroomView({
   }), currentPodiumTop ? '讲台在上' : '讲台在下')), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 flex-wrap justify-end w-full xl:w-auto"
   }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => onMonitorToggle && onMonitorToggle(),
+    className: `${monitorEnabled ? 'teacher-liquid-primary' : 'teacher-liquid-button'} flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors`,
+    title: "\u5F00\u542F\u6216\u5173\u95ED\u5B66\u751F\u673A\u76D1\u63A7"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: `fas ${monitorEnabled ? 'fa-eye' : 'fa-eye-slash'} mr-1.5`
+  }), monitorEnabled ? `监控中 ${monitorIntervalSec}s` : '开启监控'), /*#__PURE__*/React.createElement("button", {
     onClick: handleAutoImport,
     disabled: autoImporting,
     className: "teacher-liquid-primary flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors",
@@ -1587,6 +1648,10 @@ function ClassroomView({
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-eye-slash text-red-400"
   }), "\u5207\u6362\u9875\u9762"), /*#__PURE__*/React.createElement("span", {
+    className: "hidden sm:flex items-center gap-1.5"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-desktop text-sky-300"
+  }), monitorEnabled ? `缩略图 ${monitorIntervalSec}s 更新` : '监控关闭'), /*#__PURE__*/React.createElement("span", {
     className: "ml-auto hidden text-slate-400 lg:inline"
   }, "\u62D6\u62FD\u5EA7\u4F4D\u53EF\u8C03\u6574\u4F4D\u7F6E\uFF0C\u70B9\u51FB\u59D3\u540D\u53EF\u5FEB\u901F\u7F16\u8F91\u5B66\u751F\u4FE1\u606F\u3002")), /*#__PURE__*/React.createElement("div", {
     className: "flex-1 min-h-0"
@@ -1611,7 +1676,32 @@ function ClassroomView({
     className: "min-w-[76px] sm:min-w-[96px] text-center text-[10px] sm:text-xs text-slate-400 font-mono"
   }, i + 1))), renderGrid())), !currentPodiumTop && /*#__PURE__*/React.createElement("div", {
     className: "pt-3 shrink-0"
-  }, renderPodium()))), showClassroomMenu && createPortal(/*#__PURE__*/React.createElement("div", {
+  }, renderPodium()))), previewSeat && createPortal(/*#__PURE__*/React.createElement("div", {
+    className: `fixed inset-0 ${window.__getTeacherLayerClass?.('modal') || 'z-[10020]'} flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm`,
+    onClick: () => setPreviewSeat(null)
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-[24px] border border-white/12 bg-slate-950 shadow-[0_30px_100px_rgba(0,0,0,0.55)]",
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("img", {
+    src: previewSeat.screenshot.dataUrl,
+    alt: `${previewSeat.seat.name || previewSeat.seat.ip} preview`,
+    className: "max-h-[90vh] max-w-[90vw] object-contain"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "absolute inset-x-0 top-0 flex items-start justify-between gap-4 bg-gradient-to-b from-black/75 to-transparent p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-lg font-black text-white"
+  }, previewSeat.seat.name || '未命名学生'), /*#__PURE__*/React.createElement("div", {
+    className: "mt-1 text-sm text-slate-200"
+  }, previewSeat.seat.studentId ? `#${previewSeat.seat.studentId} · ` : '', previewSeat.seat.ip)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setPreviewSeat(null),
+    className: "flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-black/35 text-white/85 backdrop-blur-sm hover:bg-white/15"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-xmark"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-right text-sm text-slate-200"
+  }, formatCapturedDateTime(previewSeat.screenshot.capturedAt) ? `截图时间 ${formatCapturedDateTime(previewSeat.screenshot.capturedAt)}` : ''))), document.body), showClassroomMenu && createPortal(/*#__PURE__*/React.createElement("div", {
     ref: classroomMenuPopupRef,
     className: `teacher-glass-dark rounded-[22px] py-2 ${window.__getTeacherLayerClass?.('popup') || 'z-[10040]'} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`,
     style: getPopupStyle(classroomMenuRef, {
@@ -3329,20 +3419,55 @@ const TEACHER_LAYER_CLASS = Object.freeze({
 });
 const getTeacherLayerClass = key => window.__LumeSyncLayer?.[key] || TEACHER_LAYER_CLASS[key] || '';
 window.__getTeacherLayerClass = getTeacherLayerClass;
-window.__LumeSyncIsStandaloneClassroomWindow = () => {
-  return window.__LumeSyncWindowMode === 'classroom';
+const CLASSROOM_WINDOW_KEY = 'lumesync-classroom-window-open';
+window.__LumeSyncIsStandaloneClassroomWindow = () => window.__LumeSyncWindowMode === 'classroom';
+window.__LumeSyncClassroomWindowOpen = false;
+const syncClassroomWindowFlag = () => {
+  try {
+    window.__LumeSyncClassroomWindowOpen = localStorage.getItem(CLASSROOM_WINDOW_KEY) === '1';
+  } catch (_) {
+    window.__LumeSyncClassroomWindowOpen = false;
+  }
 };
+const markClassroomWindowOpened = () => {
+  window.__LumeSyncClassroomWindowOpen = true;
+  try {
+    localStorage.setItem(CLASSROOM_WINDOW_KEY, '1');
+  } catch (_) {}
+};
+const markClassroomWindowClosed = () => {
+  window.__LumeSyncClassroomWindowOpen = false;
+  try {
+    localStorage.removeItem(CLASSROOM_WINDOW_KEY);
+  } catch (_) {}
+};
+syncClassroomWindowFlag();
 window.__LumeSyncOpenClassroomWindow = () => {
+  syncClassroomWindowFlag();
   if (typeof window.openWindow === 'function') {
+    if (!window.__LumeSyncClassroomWindowOpen) {
+      markClassroomWindowOpened();
+    }
     window.openWindow('', {
       mode: 'classroom',
       width: 1800,
       height: 1350,
       title: '机房视图'
     });
-    return;
   }
 };
+if (window.__LumeSyncIsStandaloneClassroomWindow?.()) {
+  markClassroomWindowOpened();
+  window.addEventListener('beforeunload', markClassroomWindowClosed);
+  window.addEventListener('pagehide', markClassroomWindowClosed);
+  window.addEventListener('unload', markClassroomWindowClosed);
+}
+window.addEventListener('storage', event => {
+  if (event.key === CLASSROOM_WINDOW_KEY) {
+    syncClassroomWindowFlag();
+  }
+});
+window.__LumeSyncCloseClassroomWindow = markClassroomWindowClosed;
 const ensureTeacherShellStyles = () => {
   window.__LumeSyncLayer = {
     ...(window.__LumeSyncLayer || {}),
@@ -3632,11 +3757,14 @@ function ClassroomApp() {
     alertJoin: true,
     alertLeave: true,
     alertFullscreenExit: true,
-    alertTabHidden: true
+    alertTabHidden: true,
+    monitorEnabled: false,
+    monitorIntervalSec: 10
   };
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [studentCount, setStudentCount] = useState(0);
   const [sharedStudentLog, setSharedStudentLog] = useState([]);
+  const [studentScreenshots, setStudentScreenshots] = useState({});
   const [studentInfo, setStudentInfo] = useState({
     ip: '',
     name: '',
@@ -3809,8 +3937,9 @@ function ClassroomApp() {
         setCurrentCourseId(null);
         setCurrentCourseData(null);
         setCurrentSlide(0);
+        setStudentScreenshots({});
         window.CourseData = null;
-        window.CameraManager.release();
+        window.CameraManager?.release?.();
         if (window._onCamActive) window._onCamActive(false);
         window.electronAPI?.classEnded();
       });
@@ -3829,6 +3958,34 @@ function ClassroomApp() {
       });
       socketRef.current.on('student-log-entry', entry => {
         setSharedStudentLog(prev => [...prev, entry].slice(-500));
+      });
+      socketRef.current.on('student:screenshot', payload => {
+        if (!payload?.ip || !payload?.dataUrl) return;
+        setStudentScreenshots(prev => ({
+          ...prev,
+          [payload.ip]: payload
+        }));
+      });
+      socketRef.current.on('student:screenshot:state', data => {
+        const next = {};
+        for (const item of data?.screenshots || []) {
+          if (item?.ip && item?.dataUrl) next[item.ip] = item;
+        }
+        setStudentScreenshots(next);
+      });
+      socketRef.current.on('student:screenshot:clear', data => {
+        const ip = data?.ip;
+        if (!ip) return;
+        setStudentScreenshots(prev => {
+          const next = {
+            ...prev
+          };
+          delete next[ip];
+          return next;
+        });
+      });
+      socketRef.current.on('student:screenshot:reset', () => {
+        setStudentScreenshots({});
       });
       fetch('/api/student-log').then(r => r.json()).then(d => {
         setSharedStudentLog(d.log || []);
@@ -3988,6 +4145,10 @@ function ClassroomApp() {
       },
       socket: socketRef.current,
       studentLog: sharedStudentLog,
+      studentScreenshots: studentScreenshots,
+      monitorEnabled: !!settings?.monitorEnabled,
+      monitorIntervalSec: settings?.monitorIntervalSec || 10,
+      onMonitorToggle: () => handleSettingsChange('monitorEnabled', !settingsRef.current?.monitorEnabled),
       podiumAtTop: settings && settings.podiumAtTop,
       onPodiumAtTopChange: v => handleSettingsChange('podiumAtTop', !!v)
     });

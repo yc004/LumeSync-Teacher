@@ -825,9 +825,17 @@ class TeacherShellApp {
     const std::wstring requestedMode = lumesync::JsonStringField(payload, L"mode").value_or(L"");
     if (requestedMode.empty()) return;
 
-    std::wstring commandLine = QuoteCommandArg(ExePath().wstring()) + L" --child-window --window-mode " + QuoteCommandArg(requestedMode);
-
     const std::wstring title = lumesync::JsonStringField(payload, L"title").value_or(L"");
+    if (!title.empty()) {
+      HWND existing = FindWindowW(kMainWindowClassName, title.c_str());
+      if (existing && existing != hwnd_) {
+        ShowWindow(existing, IsIconic(existing) ? SW_RESTORE : SW_SHOW);
+        SetForegroundWindow(existing);
+        return;
+      }
+    }
+
+    std::wstring commandLine = QuoteCommandArg(ExePath().wstring()) + L" --child-window --window-mode " + QuoteCommandArg(requestedMode);
     if (!title.empty()) commandLine += L" --window-title " + QuoteCommandArg(title);
 
     const int width = lumesync::JsonIntField(payload, L"width").value_or(0);

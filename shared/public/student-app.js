@@ -10,6 +10,8 @@ const DEFAULT_SETTINGS = {
     syncInteraction: false,
     renderScale: 0.96,
     uiScale: 1.0,
+    monitorEnabled: false,
+    monitorIntervalSec: 10,
 };
 
 const getStudentBridge = () => window.studentHost || window.electronAPI || null;
@@ -123,6 +125,8 @@ function StudentApp() {
     const socketRef = useRef(null);
     const catalogRef = useRef(courseCatalog);
     const settingsRef = useRef(settings);
+    const captureInFlightRef = useRef(false);
+    const screenshotTimerRef = useRef(null);
 
     useEffect(() => {
         settingsRef.current = settings;
@@ -170,6 +174,46 @@ function StudentApp() {
         releaseStudentSlideResources();
         setCurrentSlide(nextSlide);
     };
+
+    const stopScreenshotLoop = () => {
+        if (screenshotTimerRef.current) {
+            clearInterval(screenshotTimerRef.current);
+            screenshotTimerRef.current = null;
+        }
+    };
+
+    const captureAndUploadScreenshot = async () => {
+        if (captureInFlightRef.current) return;
+        const socket = socketRef.current;
+        const bridge = getStudentBridge();
+        if (!socket || !socket.connected || !bridge || typeof bridge.takeScreenshot !== 'function') return;
+        if (!settingsRef.current?.monitorEnabled || !roleAssigned) return;
+
+        captureInFlightRef.current = true;
+        try {
+            const payload = await bridge.takeScreenshot({ maxWidth: 320, quality: 70 });
+            if (!payload || !payload.dataUrl) return;
+            socket.emit('student:screenshot', payload);
+        } catch (err) {
+            console.warn('[StudentApp] screenshot capture failed:', err);
+        } finally {
+            captureInFlightRef.current = false;
+        }
+    };
+
+    useEffect(() => {
+        stopScreenshotLoop();
+        if (!roleAssigned || !settings.monitorEnabled) return;
+        const intervalSec = Math.max(5, Math.min(120, Number(settings.monitorIntervalSec) || 10));
+        captureAndUploadScreenshot();
+        screenshotTimerRef.current = setInterval(() => {
+            captureAndUploadScreenshot();
+        }, intervalSec * 1000);
+        return () => stopScreenshotLoop();
+    }, [roleAssigned, settings.monitorEnabled, settings.monitorIntervalSec]);
+
+    useEffect(() => () => stopScreenshotLoop(), []);
+
 
     useEffect(() => {
         let disposed = false;
@@ -256,6 +300,7 @@ function StudentApp() {
 
         return () => {
             disposed = true;
+            stopScreenshotLoop();
             socketRef.current?.disconnect?.();
         };
     }, []);

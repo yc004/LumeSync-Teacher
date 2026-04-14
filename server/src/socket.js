@@ -4,6 +4,50 @@
 
 const { config } = require('./config');
 const { getStudentFromClassroomLayout } = require('./submissions');
+const { resolveCorePackagePath } = require('./core-paths');
+const { normalizeIp, verifyViewerSessionToken } = require(resolveCorePackagePath('runtime-control', 'identity'));
+
+const HOST_TOKEN = String(process.env.LUMESYNC_HOST_TOKEN || '');
+const VIEWER_TOKEN_SECRET = String(process.env.LUMESYNC_VIEWER_TOKEN_SECRET || '');
+
+function getStringValue(value) {
+    if (value === undefined || value === null) return '';
+    if (Array.isArray(value)) return getStringValue(value[0]);
+    return String(value).trim();
+}
+
+function normalizeDeclaredRole(rawRole) {
+    const role = getStringValue(rawRole).toLowerCase();
+    if (role === 'host' || role === 'teacher') return 'host';
+    if (role === 'viewer' || role === 'student') return 'viewer';
+    return '';
+}
+
+function resolveConnectionIdentity(socket) {
+    const auth = socket?.handshake?.auth || {};
+    const query = socket?.handshake?.query || {};
+    const clientIp = normalizeIp(socket?.handshake?.address || '');
+    const declaredRole = normalizeDeclaredRole(auth.role || query.role);
+    const token = getStringValue(auth.token || query.token);
+    const clientId = getStringValue(auth.clientId || query.clientId);
+
+    if (declaredRole === 'host') {
+        if (HOST_TOKEN && token === HOST_TOKEN) {
+            return { role: 'host', clientIp, clientId: clientId || `host-${clientIp}` };
+        }
+        return { role: clientIp === '127.0.0.1' || clientIp === '::1' ? 'host' : 'viewer', clientIp, clientId: clientId || clientIp };
+    }
+
+    if (declaredRole === 'viewer' && token && VIEWER_TOKEN_SECRET) {
+        const verified = verifyViewerSessionToken(token, VIEWER_TOKEN_SECRET);
+        if (verified.ok && String(verified.payload.sub) === clientId) {
+            return { role: 'viewer', clientIp, clientId };
+        }
+    }
+
+    return { role: clientIp === '127.0.0.1' || clientIp === '::1' ? 'host' : 'viewer', clientIp, clientId: clientId || clientIp };
+}
+
 
 let studentIPs = new Map(); // IP -> socket数量，同一IP只计一个学生
 
@@ -20,7 +64,13 @@ let currentHostSettings = {
     alertLeave: true,
     alertFullscreenExit: true,
     alertTabHidden: true,
+    monitorEnabled: false,
+    monitorIntervalSec: 10,
 };
+
+const latestScreenshots = new Map();
+const SCREENSHOT_DATA_URL_MAX = 1024 * 1024;
+const SCREENSHOT_BROADCAST_LIMIT = 200;
 
 // 标注数据（内存缓存）
 const annotationStore = new Map();
@@ -101,6 +151,36 @@ function pushLog(type, ip, extra) {
     }
 }
 
+function sanitizeScreenshotPayload(clientIp, data) {
+    const dataUrl = typeof data?.dataUrl === 'string' ? data.dataUrl.trim() : '';
+    if (!dataUrl.startsWith('data:image/jpeg;base64,')) return null;
+    if (dataUrl.length > SCREENSHOT_DATA_URL_MAX) return null;
+    const width = Math.max(1, Math.min(4096, Number(data?.width) || 0));
+    const height = Math.max(1, Math.min(4096, Number(data?.height) || 0));
+    return {
+        ip: clientIp,
+        dataUrl,
+        width,
+        height,
+        capturedAt: data?.capturedAt ? String(data.capturedAt) : new Date().toISOString()
+    };
+}
+
+function getScreenshotStatePayload() {
+    return Array.from(latestScreenshots.values()).slice(-SCREENSHOT_BROADCAST_LIMIT);
+}
+
+function clearStudentScreenshot(io, clientIp) {
+    if (!latestScreenshots.has(clientIp)) return;
+    latestScreenshots.delete(clientIp);
+    io.to('hosts').emit('student:screenshot:clear', { ip: clientIp });
+}
+
+function clearAllScreenshots(io) {
+    latestScreenshots.clear();
+    io.to('hosts').emit('student:screenshot:reset');
+}
+
 function setupSocketHandlers(io, {
     setCurrentCourseId,
     setCurrentSlideIndex,
@@ -109,18 +189,16 @@ function setupSocketHandlers(io, {
     getCourseCatalog
 }) {
     io.on('connection', (socket) => {
-        // 统一转换为 IPv4，去掉 IPv6 映射前缀 ::ffff:
-        const rawIp = socket.handshake.address;
-        const clientIp = rawIp.startsWith('::ffff:') ? rawIp.slice(7) : rawIp;
-        const isLocalhost = clientIp === '127.0.0.1' || clientIp === '::1';
-
-        const role = isLocalhost ? 'host' : 'viewer';
-        console.log(`[conn] IP=${clientIp} role=${role}`);
+        const identity = resolveConnectionIdentity(socket);
+        const clientIp = identity.clientIp;
+        const role = identity.role;
+        console.log(`[conn] IP=${clientIp} role=${role} clientId=${identity.clientId || ''}`);
 
         // 发送角色信息和当前课程状态给当前客户端
         socket.emit('role-assigned', {
-            role: role,
-            clientIp: clientIp,
+            role,
+            clientIp,
+            clientId: identity.clientId,
             currentCourseId: getCurrentCourseId(),
             currentSlideIndex: getCurrentSlideIndex(),
             hostSettings: currentHostSettings,
@@ -132,6 +210,7 @@ function setupSocketHandlers(io, {
             socket.join('hosts');
             // 教师端连接时发送初始学生数量
             socket.emit('student-status', { count: studentIPs.size, action: 'init' });
+            socket.emit('student:screenshot:state', { screenshots: getScreenshotStatePayload() });
         } else {
             socket.join('viewers');
             // 统计在线学生
@@ -177,7 +256,11 @@ function setupSocketHandlers(io, {
         // 同步设置（前端发送的事件名是 host-settings）
         socket.on('update-settings', (data) => {
             if (role !== 'host') return;
+            const prevMonitorEnabled = !!currentHostSettings.monitorEnabled;
             currentHostSettings = { ...currentHostSettings, ...data };
+            if (prevMonitorEnabled && !currentHostSettings.monitorEnabled) {
+                clearAllScreenshots(io);
+            }
             // 通知所有学生更新设置
             io.to('viewers').emit('host-settings', currentHostSettings);
         });
@@ -185,7 +268,11 @@ function setupSocketHandlers(io, {
         socket.on('host-settings', (data) => {
             if (role !== 'host') return;
             const prevSyncFollow = currentHostSettings.syncFollow;
+            const prevMonitorEnabled = !!currentHostSettings.monitorEnabled;
             currentHostSettings = { ...currentHostSettings, ...data };
+            if (prevMonitorEnabled && !currentHostSettings.monitorEnabled) {
+                clearAllScreenshots(io);
+            }
             // 通知所有学生更新设置，同时广播给其他教师端
             io.emit('host-settings', currentHostSettings);
             // 如果开启了学生跟随翻页，立即同步当前页面
@@ -196,6 +283,7 @@ function setupSocketHandlers(io, {
                 }
             }
         });
+
 
         // 刷新课程列表
         socket.on('refresh-courses', () => {
@@ -214,8 +302,11 @@ function setupSocketHandlers(io, {
             setCurrentSlideIndex(0);
             annotationStore.clear();
             clearVotesByCourse(courseId);
+            currentHostSettings = { ...currentHostSettings, monitorEnabled: false };
+            clearAllScreenshots(io);
             console.log(`[end-course] courseId=${courseId}`);
             io.emit('course-ended');
+            io.emit('host-settings', currentHostSettings);
         });
 
         // 注册课件依赖映射
@@ -238,7 +329,15 @@ function setupSocketHandlers(io, {
             io.to('hosts').emit('student-alert', { ip: clientIp, type });
         });
 
-        // 教师端推送管理员密码
+        // 学生端上报截图
+        socket.on('student:screenshot', (data) => {
+            if (role !== 'viewer' || !currentHostSettings.monitorEnabled) return;
+            const payload = sanitizeScreenshotPayload(clientIp, data);
+            if (!payload) return;
+            latestScreenshots.set(clientIp, payload);
+            io.to('hosts').emit('student:screenshot', payload);
+        });
+
         socket.on('set-admin-password', (data) => {
             if (role !== 'host' || !data?.hash) return;
             console.log('[set-admin-password] password update pushed to students');
@@ -564,6 +663,7 @@ function setupSocketHandlers(io, {
                 if (count <= 1) {
                     studentIPs.delete(clientIp);
                     pushLog('leave', clientIp);
+                    clearStudentScreenshot(io, clientIp);
                     io.to('hosts').emit('student-status', { count: studentIPs.size, action: 'leave', ip: clientIp });
                 } else {
                     studentIPs.set(clientIp, count - 1);

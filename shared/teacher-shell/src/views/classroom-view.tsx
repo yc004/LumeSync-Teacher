@@ -3,7 +3,7 @@
 // 功能：显示所有学生座位，支持命名、拖拽排列、在线状态
 // 布局和命名持久化到 localStorage，支持多个班级（表）
 // ========================================================
-function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTopChange, standalone = false }) {
+function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, monitorEnabled = false, monitorIntervalSec = 10, onMonitorToggle, podiumAtTop, onPodiumAtTopChange, standalone = false }) {
     const STORAGE_KEY = 'classroom-layouts-v1';
     const podiumOnTop = typeof podiumAtTop === 'boolean' ? podiumAtTop : true;
 
@@ -70,6 +70,7 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
     const [viewMode, setViewMode] = useState('grid');
     const [importError, setImportError] = useState(null);
     const [showMoreMenu, setShowMoreMenu] = useState(false);
+    const [previewSeat, setPreviewSeat] = useState(null);
     const fileInputRef = useRef(null);
     const moreMenuRef = useRef(null);
     const moreMenuPopupRef = useRef(null);
@@ -541,10 +542,39 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
         };
     };
 
+    const parseCapturedAt = (value) => {
+        if (!value && value !== 0) return null;
+        if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+        if (typeof value === 'number') {
+            const d = new Date(value);
+            return Number.isNaN(d.getTime()) ? null : d;
+        }
+        const text = String(value).trim();
+        if (!text) return null;
+        if (/^\d+$/.test(text)) {
+            const num = Number(text);
+            const d = new Date(num < 1e12 ? num * 1000 : num);
+            return Number.isNaN(d.getTime()) ? null : d;
+        }
+        const d = new Date(text);
+        return Number.isNaN(d.getTime()) ? null : d;
+    };
+
+    const formatCapturedTime = (value) => {
+        const d = parseCapturedAt(value);
+        return d ? d.toLocaleTimeString('zh-CN', { hour12: false }) : '';
+    };
+
+    const formatCapturedDateTime = (value) => {
+        const d = parseCapturedAt(value);
+        return d ? d.toLocaleString('zh-CN', { hour12: false }) : '';
+    };
+
     const renderSeat = (seat) => {
         const isOnline = onlineIPs.includes(seat.ip);
         const alerts = recentAlerts[seat.ip] || [];
         const lastAlert = alerts[alerts.length - 1];
+        const screenshot = studentScreenshots[seat.ip] || null;
         const isDragging = dragId === seat.id;
         return (
             <div
@@ -552,62 +582,86 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
                 draggable
                 onDragStart={e => handleDragStart(e, seat.id)}
                 onDragEnd={handleDragEnd}
-                className={`relative flex min-h-[78px] sm:min-h-[94px] flex-col justify-between overflow-hidden rounded-[20px] border px-2 py-2 sm:px-2.5 sm:py-2.5 cursor-grab select-none transition-all duration-200 group
+                onClick={() => screenshot?.dataUrl && setPreviewSeat({ seat, screenshot })}
+                className={`relative aspect-video overflow-hidden rounded-[20px] border cursor-grab select-none transition-all duration-200 group
                     ${isDragging ? 'opacity-40 scale-[0.98]' : 'hover:-translate-y-0.5'}
-                    ${isOnline
-                        ? 'bg-gradient-to-br from-emerald-300/22 via-cyan-300/16 to-white/10 border-emerald-200/35 shadow-[0_22px_40px_rgba(16,185,129,0.12)]'
-                        : 'bg-gradient-to-br from-white/14 via-white/8 to-slate-900/8 border-white/14 shadow-[0_18px_34px_rgba(15,23,42,0.18)] hover:border-sky-200/24'
-                    }`}
+                    ${lastAlert
+                        ? 'ring-2 ring-amber-300/70 border-amber-200/50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_22px_40px_rgba(251,191,36,0.18)]'
+                        : isOnline
+                            ? 'ring-1 ring-emerald-300/45 bg-gradient-to-br from-emerald-300/22 via-cyan-300/16 to-white/10 border-emerald-200/35 shadow-[0_22px_40px_rgba(16,185,129,0.18)]'
+                            : 'bg-gradient-to-br from-white/14 via-white/8 to-slate-900/8 border-white/14 shadow-[0_18px_34px_rgba(15,23,42,0.18)] hover:border-sky-200/24'
+                    } ${screenshot?.dataUrl ? 'cursor-zoom-in' : ''}`}
             >
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.16),transparent_55%)]"></div>
+                {screenshot?.dataUrl ? (
+                    <img src={screenshot.dataUrl} alt={`${seat.name || seat.ip} screenshot`} className="absolute inset-0 h-full w-full object-cover" />
+                ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 text-center text-[10px] text-slate-400 sm:text-[11px]">
+                        <div>
+                            <i className="fas fa-desktop mb-2 block text-lg text-slate-500"></i>
+                            <div>{monitorEnabled ? '等待截图…' : '监控已关闭'}</div>
+                        </div>
+                    </div>
+                )}
+
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/45"></div>
+                <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/10"></div>
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/50 to-transparent"></div>
+
                 <button
                     onClick={() => handleDelete(seat.id)}
-                    className="absolute top-1.5 right-1.5 z-10 hidden h-5 w-5 items-center justify-center rounded-full border border-white/12 bg-white/10 text-[10px] text-slate-300 transition-colors hover:bg-red-500 hover:text-white group-hover:flex sm:h-6 sm:w-6 sm:text-xs"
+                    className="absolute top-2 right-2 z-20 hidden h-6 w-6 items-center justify-center rounded-full border border-white/15 bg-black/35 text-[10px] text-white/85 backdrop-blur-sm transition-colors hover:bg-red-500 hover:text-white group-hover:flex"
                 >
-                    <i className="fas fa-xmark text-[8px] sm:text-[10px]"></i>
+                    <i className="fas fa-xmark text-[10px]"></i>
                 </button>
-                <div className="relative z-[1] flex items-start justify-between gap-2">
+
+                <div className="absolute left-2 top-2 z-10 flex items-start justify-between gap-2 right-10">
                     <div className="min-w-0">
-                        <div className={`mb-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] sm:text-[10px] ${
+                        <div className={`mb-1 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] backdrop-blur-sm ${
                             isOnline
                                 ? 'border-emerald-200/35 bg-emerald-300/16 text-emerald-100'
-                                : 'border-white/12 bg-white/8 text-slate-300'
+                                : 'border-white/12 bg-black/25 text-slate-200'
                         }`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.8)]' : 'bg-slate-500'}`}></span>
+                            <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.8)]' : 'bg-slate-400'}`}></span>
                             {isOnline ? 'ONLINE' : 'OFFLINE'}
                         </div>
                         <div
-                        className="truncate text-[10px] font-black tracking-[0.04em] text-white sm:text-[13px] cursor-text"
+                            className="truncate text-[11px] font-black tracking-[0.04em] text-white sm:text-[13px] cursor-text drop-shadow"
                             title={`${seat.name || '未命名'}\n${seat.studentId ? '学号: ' + seat.studentId : ''}\n${seat.ip}`}
                             onDoubleClick={() => startEdit(seat)}
                         >
-                            {seat.name || <span className="italic text-slate-400">双击命名</span>}
+                            {seat.name || <span className="italic text-slate-300">双击命名</span>}
                         </div>
                         {seat.studentId && (
-                            <div className="mt-0.5 truncate text-[8px] font-medium text-sky-200/90 sm:text-[9px]">
+                            <div className="mt-0.5 truncate text-[9px] font-medium text-sky-100/95 drop-shadow">
                                 #{seat.studentId}
                             </div>
                         )}
                     </div>
-                    <div className="rounded-full border border-white/10 bg-white/8 px-2 py-0.5 text-[9px] font-mono text-slate-300">
+                    <div className="rounded-full border border-white/12 bg-black/30 px-2 py-0.5 text-[9px] font-mono text-white/85 backdrop-blur-sm">
                         {seat.row}-{seat.col}
                     </div>
                 </div>
-                <div className="relative z-[1] mt-2 space-y-1">
-                    <div className="truncate rounded-xl border border-white/10 bg-black/10 px-2 py-1.5 font-mono text-[8px] text-slate-300 sm:text-[9px]">
+
+                <div className="absolute left-2 right-2 bottom-2 z-10 space-y-1.5">
+                    <div className="truncate rounded-xl border border-white/10 bg-black/35 px-2 py-1.5 font-mono text-[8px] text-white/90 backdrop-blur-sm sm:text-[9px]">
                         {seat.ip}
                     </div>
-                    {lastAlert && alertIcons[lastAlert.type] ? (
-                        <div className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[8px] font-medium sm:text-[9px] ${alertIcons[lastAlert.type].color} bg-black/10 border border-white/8`}>
-                            <i className={`fas ${alertIcons[lastAlert.type].icon}`}></i>
-                            <span className="truncate">{alertIcons[lastAlert.type].label}</span>
+                    <div className="flex items-center justify-between gap-2">
+                        {lastAlert && alertIcons[lastAlert.type] ? (
+                            <div className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[8px] font-medium sm:text-[9px] ${alertIcons[lastAlert.type].color} bg-black/35 border border-white/10 backdrop-blur-sm`}>
+                                <i className={`fas ${alertIcons[lastAlert.type].icon}`}></i>
+                                <span className="truncate">{alertIcons[lastAlert.type].label}</span>
+                            </div>
+                        ) : (
+                            <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[8px] text-slate-200 backdrop-blur-sm sm:text-[9px]">
+                                <i className="fas fa-wave-square"></i>
+                                <span>{screenshot?.capturedAt ? '截图已更新' : '状态正常'}</span>
+                            </div>
+                        )}
+                        <div className="text-[8px] text-white/70 sm:text-[9px] drop-shadow text-right truncate">
+                            {formatCapturedTime(screenshot?.capturedAt)}
                         </div>
-                    ) : (
-                        <div className="inline-flex items-center gap-1 rounded-full border border-white/8 bg-black/10 px-2 py-1 text-[8px] text-slate-400 sm:text-[9px]">
-                            <i className="fas fa-wave-square"></i>
-                            <span>状态正常</span>
-                        </div>
-                    )}
+                    </div>
                 </div>
             </div>
         );
@@ -697,7 +751,7 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
                         key={`${vr}-${c}`}
                         onDragOver={e => handleDragOverCell(e, r, c)}
                         onDrop={e => handleDropCell(e, r, c)}
-                        className={`min-w-[76px] sm:min-w-[96px] min-h-[78px] sm:min-h-[94px] rounded-[20px] transition-all duration-150
+                        className={`min-w-[160px] sm:min-w-[220px] aspect-video rounded-[20px] transition-all duration-150
                             ${isOver && dragId ? 'bg-sky-400/16 border-2 border-sky-200/50 border-dashed' : ''}
                             ${!seat && !isOver ? 'border border-dashed border-white/12 bg-white/[0.03]' : ''}`}
                     >
@@ -811,6 +865,14 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
                                 </button>
                             </div>
                             <div className="flex items-center gap-2 flex-wrap justify-end w-full xl:w-auto">
+                                <button
+                                    onClick={() => onMonitorToggle && onMonitorToggle()}
+                                    className={`${monitorEnabled ? 'teacher-liquid-primary' : 'teacher-liquid-button'} flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors`}
+                                    title="开启或关闭学生机监控"
+                                >
+                                    <i className={`fas ${monitorEnabled ? 'fa-eye' : 'fa-eye-slash'} mr-1.5`}></i>
+                                    {monitorEnabled ? `监控中 ${monitorIntervalSec}s` : '开启监控'}
+                                </button>
                                 <button onClick={handleAutoImport} disabled={autoImporting} className="teacher-liquid-primary flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors" title="将当前在线学生自动添加为座位">
                                     <i className={`fas ${autoImporting ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} mr-1.5`}></i>自动导入
                                 </button>
@@ -888,6 +950,7 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-500 inline-block"></span>离线</span>
                     <span className="hidden sm:flex items-center gap-1.5"><i className="fas fa-compress text-orange-400"></i>退出全屏</span>
                     <span className="hidden sm:flex items-center gap-1.5"><i className="fas fa-eye-slash text-red-400"></i>切换页面</span>
+                    <span className="hidden sm:flex items-center gap-1.5"><i className="fas fa-desktop text-sky-300"></i>{monitorEnabled ? `缩略图 ${monitorIntervalSec}s 更新` : '监控关闭'}</span>
                     <span className="ml-auto hidden text-slate-400 lg:inline">拖拽座位可调整位置，点击姓名可快速编辑学生信息。</span>
                 </div>
 
@@ -912,6 +975,33 @@ function ClassroomView({ onClose, socket, studentLog, podiumAtTop, onPodiumAtTop
                         </div>
                     )}
                 </div>
+
+                {previewSeat && createPortal(
+                    <div
+                        className={`fixed inset-0 ${(window.__getTeacherLayerClass?.('modal') || 'z-[10020]')} flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm`}
+                        onClick={() => setPreviewSeat(null)}
+                    >
+                        <div
+                            className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-[24px] border border-white/12 bg-slate-950 shadow-[0_30px_100px_rgba(0,0,0,0.55)]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <img src={previewSeat.screenshot.dataUrl} alt={`${previewSeat.seat.name || previewSeat.seat.ip} preview`} className="max-h-[90vh] max-w-[90vw] object-contain" />
+                            <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-4 bg-gradient-to-b from-black/75 to-transparent p-4">
+                                <div className="min-w-0">
+                                    <div className="text-lg font-black text-white">{previewSeat.seat.name || '未命名学生'}</div>
+                                    <div className="mt-1 text-sm text-slate-200">{previewSeat.seat.studentId ? `#${previewSeat.seat.studentId} · ` : ''}{previewSeat.seat.ip}</div>
+                                </div>
+                                <button onClick={() => setPreviewSeat(null)} className="flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-black/35 text-white/85 backdrop-blur-sm hover:bg-white/15">
+                                    <i className="fas fa-xmark"></i>
+                                </button>
+                            </div>
+                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-right text-sm text-slate-200">
+                                {formatCapturedDateTime(previewSeat.screenshot.capturedAt) ? `截图时间 ${formatCapturedDateTime(previewSeat.screenshot.capturedAt)}` : ''}
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )}
 
                 {showClassroomMenu && createPortal(
                     <div

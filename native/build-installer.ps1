@@ -7,7 +7,13 @@ param(
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$SourcePath = Resolve-Path (Join-Path $RepoRoot $SourceDir)
+$PreferredSource = Join-Path $RepoRoot $SourceDir
+$StagingSource = "$PreferredSource.staging"
+if (Test-Path $StagingSource) {
+  $SourcePath = Resolve-Path $StagingSource
+} else {
+  $SourcePath = Resolve-Path $PreferredSource
+}
 $OutputPath = Join-Path $RepoRoot $OutputDir
 $ScriptPath = Join-Path $RepoRoot "native/installer/teacher-native.nsi"
 $OutputFile = Join-Path $OutputPath $OutputName

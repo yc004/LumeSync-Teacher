@@ -8,6 +8,13 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = (
     const [pwdStatus, setPwdStatus] = useState(null); // 'ok' | 'err' | null
     const [submissionDir, setSubmissionDir] = useState('');
     const [submissionDirStatus, setSubmissionDirStatus] = useState(null); // 'ok' | 'err' | null
+    const clampMonitorInterval = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return 1;
+        const clamped = Math.min(5, Math.max(0.5, n));
+        return Math.round(clamped * 2) / 2;
+    };
+    const monitorIntervalValue = clampMonitorInterval(settings?.monitorIntervalSec);
     const renderScaleValue = (typeof settings?.renderScale === 'number' && Number.isFinite(settings.renderScale)) ? settings.renderScale : 0.96;
     const uiScaleValue = (typeof settings?.uiScale === 'number' && Number.isFinite(settings.uiScale)) ? settings.uiScale : 1.0;
 
@@ -123,6 +130,7 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = (
                         { key: 'alertLeave',          label: '学生离线提醒',  icon: 'fa-user-minus' },
                         { key: 'alertFullscreenExit', label: '退出全屏提醒',  icon: 'fa-compress' },
                         { key: 'alertTabHidden',      label: '切换页面提醒',  icon: 'fa-eye-slash' },
+                        { key: 'monitorEnabled',      label: '学生截图监控',  icon: 'fa-camera' },
                     ].map(({ key, label, icon }) => (
                         <div key={key} className="flex items-center justify-between">
                             <span className="flex items-center text-slate-100 font-medium text-sm">
@@ -137,6 +145,39 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = (
                             </button>
                         </div>
                     ))}
+
+                    <div className="border-t border-white/10 pt-4">
+                        <p className="text-xs font-bold text-sky-200/80 uppercase tracking-wider mb-3 flex items-center">
+                            <i className="fas fa-camera w-4 mr-2 text-slate-400"></i>
+                            学生截图监控
+                        </p>
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-slate-100 font-medium">截图间隔</span>
+                            <span className="text-sm font-mono text-slate-300">{monitorIntervalValue}s</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0.5"
+                            max="5"
+                            step="0.5"
+                            value={monitorIntervalValue}
+                            onChange={e => onSettingsChange('monitorIntervalSec', clampMonitorInterval(e.target.value))}
+                            className="w-full"
+                        />
+                        <div className="flex items-center justify-between mt-2">
+                            <span className="text-xs text-slate-400">0.5s</span>
+                            <button
+                                onClick={() => onSettingsChange('monitorIntervalSec', 1)}
+                                className="text-xs text-sky-300 hover:text-white font-bold"
+                            >
+                                恢复默认
+                            </button>
+                            <span className="text-xs text-slate-400">5s</span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                            学生端按该间隔上传屏幕缩略图；关闭“学生截图监控”后停止上传。
+                        </p>
+                    </div>
                     
                     <div className="border-t border-white/10 pt-4">
                         <p className="text-xs font-bold text-sky-200/80 uppercase tracking-wider mb-3 flex items-center">

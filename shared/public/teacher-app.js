@@ -252,6 +252,13 @@ function SettingsPanel({
   const [pwdStatus, setPwdStatus] = useState(null); // 'ok' | 'err' | null
   const [submissionDir, setSubmissionDir] = useState('');
   const [submissionDirStatus, setSubmissionDirStatus] = useState(null); // 'ok' | 'err' | null
+  const clampMonitorInterval = value => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 1;
+    const clamped = Math.min(5, Math.max(0.5, n));
+    return Math.round(clamped * 2) / 2;
+  };
+  const monitorIntervalValue = clampMonitorInterval(settings?.monitorIntervalSec);
   const renderScaleValue = typeof settings?.renderScale === 'number' && Number.isFinite(settings.renderScale) ? settings.renderScale : 0.96;
   const uiScaleValue = typeof settings?.uiScale === 'number' && Number.isFinite(settings.uiScale) ? settings.uiScale : 1.0;
 
@@ -382,6 +389,10 @@ function SettingsPanel({
     key: 'alertTabHidden',
     label: '切换页面提醒',
     icon: 'fa-eye-slash'
+  }, {
+    key: 'monitorEnabled',
+    label: '学生截图监控',
+    icon: 'fa-camera'
   }].map(({
     key,
     label,
@@ -399,6 +410,37 @@ function SettingsPanel({
   }, /*#__PURE__*/React.createElement("span", {
     className: `absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${settings[key] ? 'left-7' : 'left-1'}`
   })))), /*#__PURE__*/React.createElement("div", {
+    className: "border-t border-white/10 pt-4"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-bold text-sky-200/80 uppercase tracking-wider mb-3 flex items-center"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-camera w-4 mr-2 text-slate-400"
+  }), "\u5B66\u751F\u622A\u56FE\u76D1\u63A7"), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm text-slate-100 font-medium"
+  }, "\u622A\u56FE\u95F4\u9694"), /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-mono text-slate-300"
+  }, monitorIntervalValue, "s")), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0.5",
+    max: "5",
+    step: "0.5",
+    value: monitorIntervalValue,
+    onChange: e => onSettingsChange('monitorIntervalSec', clampMonitorInterval(e.target.value)),
+    className: "w-full"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mt-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xs text-slate-400"
+  }, "0.5s"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onSettingsChange('monitorIntervalSec', 1),
+    className: "text-xs text-sky-300 hover:text-white font-bold"
+  }, "\u6062\u590D\u9ED8\u8BA4"), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs text-slate-400"
+  }, "5s")), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-400 mt-2 leading-relaxed"
+  }, "\u5B66\u751F\u7AEF\u6309\u8BE5\u95F4\u9694\u4E0A\u4F20\u5C4F\u5E55\u7F29\u7565\u56FE\uFF1B\u5173\u95ED\u201C\u5B66\u751F\u622A\u56FE\u76D1\u63A7\u201D\u540E\u505C\u6B62\u4E0A\u4F20\u3002")), /*#__PURE__*/React.createElement("div", {
     className: "border-t border-white/10 pt-4"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-xs font-bold text-sky-200/80 uppercase tracking-wider mb-3 flex items-center"
@@ -556,14 +598,17 @@ function ClassroomView({
   studentLog,
   studentScreenshots = {},
   monitorEnabled = false,
-  monitorIntervalSec = 10,
-  onMonitorToggle,
+  monitorIntervalSec = 1,
   podiumAtTop,
   onPodiumAtTopChange,
   standalone = false
 }) {
   const STORAGE_KEY = 'classroom-layouts-v1';
   const podiumOnTop = typeof podiumAtTop === 'boolean' ? podiumAtTop : true;
+  const SEAT_CARD_WIDTH = 190;
+  const SEAT_CARD_HEIGHT = Math.round(SEAT_CARD_WIDTH * 9 / 16);
+  const SEAT_CARD_GAP = 20;
+  const CANVAS_PADDING = 36;
 
   // 多班级状态管理
   const [classrooms, setClassrooms] = useState(() => {
@@ -618,7 +663,7 @@ function ClassroomView({
   useEffect(() => {
     const classroom = classrooms[currentClassroomId];
     if (classroom) {
-      setSeats(classroom.seats || []);
+      setSeats((classroom.seats || []).map(withSeatCanvasPosition));
       setCurrentPodiumTop(classroom.podiumAtTop !== undefined ? classroom.podiumAtTop : podiumOnTop);
     }
   }, [currentClassroomId, classrooms]);
@@ -627,7 +672,7 @@ function ClassroomView({
   const [editName, setEditName] = useState('');
   const [editStudentId, setEditStudentId] = useState('');
   const [dragId, setDragId] = useState(null);
-  const [dragOver, setDragOver] = useState(null);
+  const [dragPreviewPos, setDragPreviewPos] = useState(null);
   const [addRow, setAddRow] = useState(1);
   const [addCol, setAddCol] = useState(1);
   const [addIp, setAddIp] = useState('');
@@ -642,6 +687,8 @@ function ClassroomView({
   const fileInputRef = useRef(null);
   const moreMenuRef = useRef(null);
   const moreMenuPopupRef = useRef(null);
+  const seatCanvasViewportRef = useRef(null);
+  const seatCanvasRef = useRef(null);
   useEffect(() => {
     const handleClickOutside = e => {
       if (moreMenuRef.current && !moreMenuRef.current.contains(e.target) && !moreMenuPopupRef.current?.contains(e.target)) {
@@ -656,8 +703,181 @@ function ClassroomView({
   }, []);
   const maxRow = seats.reduce((m, s) => Math.max(m, s.row), 0);
   const maxCol = seats.reduce((m, s) => Math.max(m, s.col), 0);
-  const gridRows = Math.max(maxRow, 4);
-  const gridCols = Math.max(maxCol, 6);
+  const layoutCols = Math.max(maxCol, 6);
+  const GRID_SNAP_THRESHOLD = 16;
+  const rowColToCanvasPos = (row, col) => {
+    const safeRow = Math.max(1, Number(row) || 1);
+    const safeCol = Math.max(1, Number(col) || 1);
+    return {
+      x: CANVAS_PADDING + (safeCol - 1) * (SEAT_CARD_WIDTH + SEAT_CARD_GAP),
+      y: CANVAS_PADDING + (safeRow - 1) * (SEAT_CARD_HEIGHT + SEAT_CARD_GAP)
+    };
+  };
+  const canvasPosToRowCol = (x, y) => ({
+    row: Math.max(1, Math.round(Math.max(0, y - CANVAS_PADDING) / (SEAT_CARD_HEIGHT + SEAT_CARD_GAP)) + 1),
+    col: Math.max(1, Math.round(Math.max(0, x - CANVAS_PADDING) / (SEAT_CARD_WIDTH + SEAT_CARD_GAP)) + 1)
+  });
+  const getSnappedCanvasPos = (x, y) => {
+    const grid = canvasPosToRowCol(x, y);
+    const snapped = rowColToCanvasPos(grid.row, grid.col);
+    const dx = Math.abs(snapped.x - x);
+    const dy = Math.abs(snapped.y - y);
+    if (dx <= GRID_SNAP_THRESHOLD) x = snapped.x;
+    if (dy <= GRID_SNAP_THRESHOLD) y = snapped.y;
+    return {
+      x,
+      y,
+      row: grid.row,
+      col: grid.col,
+      snappedX: dx <= GRID_SNAP_THRESHOLD,
+      snappedY: dy <= GRID_SNAP_THRESHOLD
+    };
+  };
+  const getGridOverlayStyle = (active = false) => {
+    const majorAlpha = active ? 0.16 : 0.08;
+    const minorAlpha = active ? 0.1 : 0.05;
+    const majorW = SEAT_CARD_WIDTH + SEAT_CARD_GAP;
+    const majorH = SEAT_CARD_HEIGHT + SEAT_CARD_GAP;
+    const minorW = Math.max(12, Math.round(majorW / 2));
+    const minorH = Math.max(10, Math.round(majorH / 2));
+    return {
+      backgroundImage: [`linear-gradient(to right, rgba(125,211,252,${minorAlpha}) 1px, transparent 1px)`, `linear-gradient(to bottom, rgba(125,211,252,${minorAlpha}) 1px, transparent 1px)`, `linear-gradient(to right, rgba(125,211,252,${majorAlpha}) 1px, transparent 1px)`, `linear-gradient(to bottom, rgba(125,211,252,${majorAlpha}) 1px, transparent 1px)`].join(', '),
+      backgroundSize: [`${minorW}px ${minorH}px`, `${minorW}px ${minorH}px`, `${majorW}px ${majorH}px`, `${majorW}px ${majorH}px`].join(', '),
+      backgroundPosition: [`${CANVAS_PADDING}px ${CANVAS_PADDING}px`, `${CANVAS_PADDING}px ${CANVAS_PADDING}px`, `${CANVAS_PADDING}px ${CANVAS_PADDING}px`, `${CANVAS_PADDING}px ${CANVAS_PADDING}px`].join(', ')
+    };
+  };
+  const isSeatSnapped = seat => {
+    const pos = dragPreviewPos && dragPreviewPos.id === seat.id ? dragPreviewPos : getSeatCanvasPosition(seat);
+    const snapped = getSnappedCanvasPos(pos.x, pos.y);
+    return snapped.snappedX || snapped.snappedY;
+  };
+  const getSeatTransitionClass = dragging => dragging ? 'transition-none' : 'transition-[transform,box-shadow,border-color,opacity] duration-150';
+  const getSeatSnapIndicatorClass = seat => isSeatSnapped(seat) ? 'ring-2 ring-sky-300/45' : '';
+  const getSeatDragShadowClass = dragging => dragging ? 'shadow-[0_24px_48px_rgba(56,189,248,0.22)]' : '';
+  const getSeatPreviewPos = seat => dragPreviewPos && dragPreviewPos.id === seat.id ? dragPreviewPos : getSeatCanvasPosition(seat);
+  const getSeatRenderPos = seat => {
+    const pos = getSeatPreviewPos(seat);
+    return dragId === seat.id ? getSnappedCanvasPos(pos.x, pos.y) : {
+      x: pos.x,
+      y: pos.y
+    };
+  };
+  const getCanvasMetrics = () => {
+    const seatPositions = seats.map(getSeatCanvasPosition);
+    const maxX = seatPositions.reduce((m, pos) => Math.max(m, pos.x), CANVAS_PADDING);
+    const maxY = seatPositions.reduce((m, pos) => Math.max(m, pos.y), CANVAS_PADDING);
+    const canvasWidth = Math.max(CANVAS_PADDING * 2 + layoutCols * (SEAT_CARD_WIDTH + SEAT_CARD_GAP), maxX + SEAT_CARD_WIDTH + CANVAS_PADDING);
+    const estimatedRows = Math.max(maxRow, 4);
+    const canvasHeight = Math.max(CANVAS_PADDING * 2 + estimatedRows * (SEAT_CARD_HEIGHT + SEAT_CARD_GAP), maxY + SEAT_CARD_HEIGHT + CANVAS_PADDING);
+    return {
+      canvasWidth,
+      canvasHeight
+    };
+  };
+  const getCanvasGuides = () => {
+    const {
+      canvasWidth,
+      canvasHeight
+    } = getCanvasMetrics();
+    return {
+      canvasWidth,
+      canvasHeight
+    };
+  };
+  const getCanvasGridClass = () => dragId ? 'opacity-100' : 'opacity-70';
+  const getCanvasGridStyle = () => getGridOverlayStyle(Boolean(dragId));
+  const getSeatCanvasStyle = seat => {
+    const pos = getSeatRenderPos(seat);
+    return {
+      left: `${pos.x}px`,
+      top: `${pos.y}px`,
+      width: `${SEAT_CARD_WIDTH}px`,
+      height: `${SEAT_CARD_HEIGHT}px`
+    };
+  };
+  const getSeatGridCoords = seat => {
+    const pos = getSeatRenderPos(seat);
+    return canvasPosToRowCol(pos.x, pos.y);
+  };
+  const getSeatCoordLabel = seat => {
+    const grid = getSeatGridCoords(seat);
+    return `${grid.row}-${grid.col}`;
+  };
+  const getSeatFinalDrop = (x, y) => {
+    const snapped = getSnappedCanvasPos(x, y);
+    const grid = canvasPosToRowCol(snapped.x, snapped.y);
+    return {
+      x: snapped.x,
+      y: snapped.y,
+      row: grid.row,
+      col: grid.col
+    };
+  };
+  const getSeatPreviewUpdate = (x, y) => {
+    const snapped = getSnappedCanvasPos(x, y);
+    return {
+      x: snapped.x,
+      y: snapped.y
+    };
+  };
+  const getCanvasClamp = canvas => ({
+    maxX: Math.max(0, canvas.clientWidth - SEAT_CARD_WIDTH),
+    maxY: Math.max(0, canvas.clientHeight - SEAT_CARD_HEIGHT)
+  });
+  const clampSeatPos = (x, y, canvas) => {
+    const {
+      maxX,
+      maxY
+    } = getCanvasClamp(canvas);
+    return {
+      x: Math.min(maxX, Math.max(0, x)),
+      y: Math.min(maxY, Math.max(0, y))
+    };
+  };
+  const toCanvasPointerPos = (event, canvasRect, viewport) => ({
+    x: event.clientX - canvasRect.left + viewport.scrollLeft,
+    y: event.clientY - canvasRect.top + viewport.scrollTop
+  });
+  const toSeatDragPos = (pointer, offsetX, offsetY, canvas) => clampSeatPos(pointer.x - offsetX, pointer.y - offsetY, canvas);
+  const getDragMoved = (nextX, nextY, startPos) => Math.abs(nextX - startPos.x) > 2 || Math.abs(nextY - startPos.y) > 2;
+  const queueSeatPreviewUpdate = (setPreview, next) => setPreview(next);
+  const getSeatDragStart = seat => getSeatCanvasPosition(seat);
+  const getSeatDragOffset = (pointer, startPos) => ({
+    offsetX: pointer.x - startPos.x,
+    offsetY: pointer.y - startPos.y
+  });
+  const getCanvasScrollPointer = (event, canvasRect, viewport) => toCanvasPointerPos(event, canvasRect, viewport);
+  const getSeatMovePoint = (moveEvent, canvasRect, viewport, offsetX, offsetY, canvas) => {
+    const pointer = getCanvasScrollPointer(moveEvent, canvasRect, viewport);
+    return toSeatDragPos(pointer, offsetX, offsetY, canvas);
+  };
+  const getSeatDropState = lastPos => getSeatFinalDrop(lastPos.x, lastPos.y);
+  const getSeatPreviewState = lastPos => getSeatPreviewUpdate(lastPos.x, lastPos.y);
+  const setSeatPreviewState = (seatId, setPreview, lastPos) => queueSeatPreviewUpdate(setPreview, {
+    id: seatId,
+    ...getSeatPreviewState(lastPos)
+  });
+  const getSeatCardGuideClass = seat => isSeatSnapped(seat) ? 'before:absolute before:inset-0 before:border before:border-sky-300/35 before:rounded-[20px] before:pointer-events-none' : '';
+  const getSeatCanvasPosition = seat => {
+    if (Number.isFinite(Number(seat?.x)) && Number.isFinite(Number(seat?.y))) {
+      return {
+        x: Math.max(0, Number(seat.x)),
+        y: Math.max(0, Number(seat.y))
+      };
+    }
+    return rowColToCanvasPos(seat?.row, seat?.col);
+  };
+  const withSeatCanvasPosition = seat => {
+    const pos = getSeatCanvasPosition(seat);
+    const grid = canvasPosToRowCol(pos.x, pos.y);
+    return {
+      ...seat,
+      x: pos.x,
+      y: pos.y,
+      row: grid.row,
+      col: grid.col
+    };
+  };
   const saveClassroom = (classroomId, data) => {
     setClassrooms(prev => {
       const updated = {
@@ -687,9 +907,10 @@ function ClassroomView({
     });
   };
   const saveSeats = next => {
-    setSeats(next);
+    const normalized = next.map(withSeatCanvasPosition);
+    setSeats(normalized);
     saveClassroom(currentClassroomId, {
-      seats: next
+      seats: normalized
     });
   };
   const handleTitlebarMouseDown = event => {
@@ -775,8 +996,7 @@ function ClassroomView({
   };
 
   // 重命名班级
-  const handleRenameClassroom = (e, classroomId, newName) => {
-    e.stopPropagation();
+  const handleRenameClassroom = (classroomId, newName) => {
     saveClassroom(classroomId, {
       name: newName.trim()
     });
@@ -840,11 +1060,11 @@ function ClassroomView({
         setAutoImporting(false);
         return;
       }
-      let row = gridRows;
+      let row = Math.max(maxRow, 4);
       let col = 0;
       const added = newIps.map(ip => {
         col++;
-        if (col > gridCols) {
+        if (col > layoutCols) {
           col = 1;
           row++;
         }
@@ -866,53 +1086,74 @@ function ClassroomView({
     if (!recentAlerts[e.ip]) recentAlerts[e.ip] = [];
     recentAlerts[e.ip].push(e);
   });
-  const handleDragStart = (e, id) => {
-    setDragId(id);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-  const handleDragOverCell = (e, row, col) => {
-    e.preventDefault();
-    setDragOver({
-      row,
-      col
+  const handleSeatMouseDown = (event, seat) => {
+    if (event.button !== 0) return;
+    if (event.target?.closest?.('button')) return;
+    const viewport = seatCanvasViewportRef.current;
+    const canvas = seatCanvasRef.current;
+    if (!viewport || !canvas) return;
+    event.preventDefault();
+    const startPos = getSeatDragStart(seat);
+    const canvasRect = canvas.getBoundingClientRect();
+    const startPointer = getCanvasScrollPointer(event, canvasRect, viewport);
+    const {
+      offsetX,
+      offsetY
+    } = getSeatDragOffset(startPointer, startPos);
+    setDragId(seat.id);
+    setDragPreviewPos({
+      id: seat.id,
+      x: startPos.x,
+      y: startPos.y
     });
-  };
-  const handleDropCell = (e, row, col) => {
-    e.preventDefault();
-    if (!dragId) return;
-    const target = seats.find(s => s.row === row && s.col === col);
-    const dragged = seats.find(s => s.id === dragId);
-    if (!dragged) return;
-    if (target && target.id !== dragId) {
-      saveSeats(seats.map(s => {
-        if (s.id === dragId) return {
+    let moved = false;
+    let lastPos = {
+      x: startPos.x,
+      y: startPos.y
+    };
+    let frameId = null;
+    let pendingPos = null;
+    const flushPreview = () => {
+      frameId = null;
+      if (!pendingPos) return;
+      const next = pendingPos;
+      pendingPos = null;
+      setSeatPreviewState(seat.id, setDragPreviewPos, next);
+    };
+    const onMouseMove = moveEvent => {
+      const nextPos = getSeatMovePoint(moveEvent, canvasRect, viewport, offsetX, offsetY, canvas);
+      if (getDragMoved(nextPos.x, nextPos.y, startPos)) moved = true;
+      lastPos = nextPos;
+      pendingPos = nextPos;
+      if (frameId === null) {
+        frameId = window.requestAnimationFrame(flushPreview);
+      }
+    };
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+        flushPreview();
+      }
+      if (moved) {
+        const drop = getSeatDropState(lastPos);
+        saveSeats(seats.map(s => s.id === seat.id ? {
           ...s,
-          row: target.row,
-          col: target.col
-        };
-        if (s.id === target.id) return {
-          ...s,
-          row: dragged.row,
-          col: dragged.col
-        };
-        return s;
-      }));
-    } else {
-      saveSeats(seats.map(s => s.id === dragId ? {
-        ...s,
-        row,
-        col
-      } : s));
-    }
-    setDragId(null);
-    setDragOver(null);
-  };
-  const handleDragEnd = () => {
-    setDragId(null);
-    setDragOver(null);
+          x: drop.x,
+          y: drop.y,
+          row: drop.row,
+          col: drop.col
+        } : s));
+      }
+      setDragId(null);
+      setDragPreviewPos(null);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
   };
   const handleDownloadTemplate = () => {
-    const content = ['# 机房座位列表模板', '# 格式：ip,名称,学号,行,列', '# 每行一个座位，# 开头为注释行', '# 行列从 1 开始，左上角为 (1,1)', '#', '# 示例：', '192.168.1.101,A01,20230001,1,1', '192.168.1.102,A02,20230002,1,2', '192.168.1.103,A03,20230003,1,3', '192.168.1.104,A04,20230004,1,4', '192.168.1.105,A05,20230005,1,5', '192.168.1.106,A06,20230006,1,6', '192.168.1.201,B01,20230007,2,1', '192.168.1.202,B02,20230008,2,2', '192.168.1.203,B03,20230009,2,3'].join('\n');
+    const content = ['# 机房座位列表模板', '# 每行格式: ip,姓名,学号,行,列,x,y', '# 行列或坐标至少提供一组，不提供时系统自动排布', '#', '# 示例', '192.168.1.101,A01,20230001,1,1,36,36', '192.168.1.101,A01,20230001,1,1', '192.168.1.102,A02,20230002,1,2', '192.168.1.103,A03,20230003,1,3', '192.168.1.104,A04,20230004,1,4', '192.168.1.105,A05,20230005,1,5', '192.168.1.106,A06,20230006,1,6', '192.168.1.201,B01,20230007,2,1', '192.168.1.202,B02,20230008,2,2', '192.168.1.203,B03,20230009,2,3'].join('\n');
     const blob = new Blob([content], {
       type: 'text/plain;charset=utf-8'
     });
@@ -950,7 +1191,9 @@ function ClassroomView({
                     name: s.name || '',
                     studentId: s.studentId || '',
                     row: s.row,
-                    col: s.col
+                    col: s.col,
+                    x: s.x,
+                    y: s.y
                   };
                 }),
                 podiumAtTop: parsed.podiumAtTop !== undefined ? parsed.podiumAtTop : true
@@ -970,7 +1213,9 @@ function ClassroomView({
             const studentId = s && s.studentId ? String(s.studentId) : '';
             const row = s && Number.isFinite(Number(s.row)) ? Math.max(1, Number(s.row)) : null;
             const col = s && Number.isFinite(Number(s.col)) ? Math.max(1, Number(s.col)) : null;
-            if (!ip || !row || !col) return null;
+            const x = s && Number.isFinite(Number(s.x)) ? Math.max(0, Number(s.x)) : null;
+            const y = s && Number.isFinite(Number(s.y)) ? Math.max(0, Number(s.y)) : null;
+            if (!ip || (!row || !col) && (x === null || y === null)) return null;
             const id = s && s.id ? String(s.id) : `seat-${Date.now()}-${ip}-${idx}`;
             return {
               id,
@@ -978,7 +1223,9 @@ function ClassroomView({
               name,
               studentId,
               row,
-              col
+              col,
+              x,
+              y
             };
           }).filter(Boolean);
           if (normalized.length === 0) {
@@ -1008,6 +1255,8 @@ function ClassroomView({
         const studentId = parts[2] ? parts[2].trim() : '';
         const row = parts[3] ? parseInt(parts[3].trim(), 10) : null;
         const col = parts[4] ? parseInt(parts[4].trim(), 10) : null;
+        const x = parts[5] ? parseFloat(parts[5].trim()) : null;
+        const y = parts[6] ? parseFloat(parts[6].trim()) : null;
         if (!ip) {
           errors.push(`第 ${idx + 1} 行 IP 为空`);
           return;
@@ -1025,7 +1274,9 @@ function ClassroomView({
           name,
           studentId,
           row: row || null,
-          col: col || null
+          col: col || null,
+          x: x ?? null,
+          y: y ?? null
         });
       });
       if (errors.length > 0) {
@@ -1037,16 +1288,27 @@ function ClassroomView({
       let autoCol = 0;
       imported.forEach(item => {
         const existing = nextSeats.find(s => s.ip === item.ip);
+        let x = item.x;
+        let y = item.y;
         let r = item.row,
           c = item.col;
-        if (!r || !c) {
-          autoCol++;
-          if (autoCol > gridCols) {
-            autoCol = 1;
-            autoRow++;
+        if (x === null || y === null) {
+          if (!r || !c) {
+            autoCol++;
+            if (autoCol > layoutCols) {
+              autoCol = 1;
+              autoRow++;
+            }
+            r = autoRow;
+            c = autoCol;
           }
-          r = autoRow;
-          c = autoCol;
+          const pos = rowColToCanvasPos(r, c);
+          x = pos.x;
+          y = pos.y;
+        } else if (!r || !c) {
+          const grid = canvasPosToRowCol(x, y);
+          r = grid.row;
+          c = grid.col;
         }
         if (existing) {
           nextSeats = nextSeats.map(s => s.ip === item.ip ? {
@@ -1054,7 +1316,9 @@ function ClassroomView({
             name: item.name || s.name,
             studentId: item.studentId || s.studentId,
             row: r,
-            col: c
+            col: c,
+            x,
+            y
           } : s);
         } else {
           nextSeats.push({
@@ -1063,7 +1327,9 @@ function ClassroomView({
             name: item.name,
             studentId: item.studentId,
             row: r,
-            col: c
+            col: c,
+            x,
+            y
           });
         }
       });
@@ -1097,7 +1363,9 @@ function ClassroomView({
         name: s.name || '',
         studentId: s.studentId || '',
         row: s.row,
-        col: s.col
+        col: s.col,
+        x: s.x,
+        y: s.y
       }))
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -1106,7 +1374,7 @@ function ClassroomView({
     downloadBlob(blob, `classroom-${currentClassroom.name}-${getStamp()}.json`);
   };
   const handleExportCsv = () => {
-    const content = ['# 机房座位列表', '# 格式：ip,名称,学号,行,列', ...[...seats].sort((a, b) => a.row !== b.row ? a.row - b.row : a.col - b.col).map(s => `${s.ip},${String(s.name || '').replace(/,/g, ' ')},${String(s.studentId || '').replace(/,/g, ' ')},${s.row},${s.col}`)].join('\n');
+    const content = ['# 机房座位列表', '# 格式：ip,名称,学号,行,列,x,y', ...[...seats].sort((a, b) => a.row !== b.row ? a.row - b.row : a.col - b.col).map(s => `${s.ip},${String(s.name || '').replace(/,/g, ' ')},${String(s.studentId || '').replace(/,/g, ' ')},${s.row},${s.col},${s.x ?? ''},${s.y ?? ''}`)].join('\n');
     const blob = new Blob([content], {
       type: 'text/plain;charset=utf-8'
     });
@@ -1234,16 +1502,15 @@ function ClassroomView({
     const isDragging = dragId === seat.id;
     return /*#__PURE__*/React.createElement("div", {
       key: seat.id,
-      draggable: true,
-      onDragStart: e => handleDragStart(e, seat.id),
-      onDragEnd: handleDragEnd,
+      onMouseDown: e => handleSeatMouseDown(e, seat),
       onClick: () => screenshot?.dataUrl && setPreviewSeat({
         seat,
         screenshot
       }),
-      className: `relative aspect-video overflow-hidden rounded-[20px] border cursor-grab select-none transition-all duration-200 group
-                    ${isDragging ? 'opacity-40 scale-[0.98]' : 'hover:-translate-y-0.5'}
-                    ${lastAlert ? 'ring-2 ring-amber-300/70 border-amber-200/50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_22px_40px_rgba(251,191,36,0.18)]' : isOnline ? 'ring-1 ring-emerald-300/45 bg-gradient-to-br from-emerald-300/22 via-cyan-300/16 to-white/10 border-emerald-200/35 shadow-[0_22px_40px_rgba(16,185,129,0.18)]' : 'bg-gradient-to-br from-white/14 via-white/8 to-slate-900/8 border-white/14 shadow-[0_18px_34px_rgba(15,23,42,0.18)] hover:border-sky-200/24'} ${screenshot?.dataUrl ? 'cursor-zoom-in' : ''}`
+      className: `absolute overflow-hidden rounded-[20px] border cursor-grab select-none group ${getSeatTransitionClass(isDragging)} ${getSeatCardGuideClass(seat)} ${getSeatSnapIndicatorClass(seat)}
+                    ${isDragging ? `opacity-85 scale-[0.98] z-20 ${getSeatDragShadowClass(isDragging)}` : 'hover:-translate-y-0.5'}
+                    ${lastAlert ? 'ring-2 ring-amber-300/70 border-amber-200/50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_22px_40px_rgba(251,191,36,0.18)]' : isOnline ? 'ring-1 ring-emerald-300/45 bg-gradient-to-br from-emerald-300/22 via-cyan-300/16 to-white/10 border-emerald-200/35 shadow-[0_22px_40px_rgba(16,185,129,0.18)]' : 'bg-gradient-to-br from-white/14 via-white/8 to-slate-900/8 border-white/14 shadow-[0_18px_34px_rgba(15,23,42,0.18)] hover:border-sky-200/24'} ${screenshot?.dataUrl ? 'cursor-zoom-in' : ''}`,
+      style: getSeatCanvasStyle(seat)
     }, screenshot?.dataUrl ? /*#__PURE__*/React.createElement("img", {
       src: screenshot.dataUrl,
       alt: `${seat.name || seat.ip} screenshot`,
@@ -1281,7 +1548,7 @@ function ClassroomView({
       className: "mt-0.5 truncate text-[9px] font-medium text-sky-100/95 drop-shadow"
     }, "#", seat.studentId)), /*#__PURE__*/React.createElement("div", {
       className: "rounded-full border border-white/12 bg-black/30 px-2 py-0.5 text-[9px] font-mono text-white/85 backdrop-blur-sm"
-    }, seat.row, "-", seat.col)), /*#__PURE__*/React.createElement("div", {
+    }, getSeatCoordLabel(seat))), /*#__PURE__*/React.createElement("div", {
       className: "absolute left-2 right-2 bottom-2 z-10 space-y-1.5"
     }, /*#__PURE__*/React.createElement("div", {
       className: "truncate rounded-xl border border-white/10 bg-black/35 px-2 py-1.5 font-mono text-[8px] text-white/90 backdrop-blur-sm sm:text-[9px]"
@@ -1383,33 +1650,26 @@ function ClassroomView({
       className: "fas fa-trash-can"
     }))));
   })))));
-  const renderGrid = () => {
-    const rows = [];
-    const rowCount = gridRows;
-    const colCount = gridCols;
-    for (let vr = 1; vr <= rowCount; vr++) {
-      const r = currentPodiumTop ? vr : rowCount - vr + 1;
-      const cols = [];
-      for (let c = 1; c <= colCount; c++) {
-        const seat = seats.find(s => s.row === r && s.col === c);
-        const isOver = dragOver && dragOver.row === r && dragOver.col === c;
-        cols.push(/*#__PURE__*/React.createElement("div", {
-          key: `${vr}-${c}`,
-          onDragOver: e => handleDragOverCell(e, r, c),
-          onDrop: e => handleDropCell(e, r, c),
-          className: `min-w-[160px] sm:min-w-[220px] aspect-video rounded-[20px] transition-all duration-150
-                            ${isOver && dragId ? 'bg-sky-400/16 border-2 border-sky-200/50 border-dashed' : ''}
-                            ${!seat && !isOver ? 'border border-dashed border-white/12 bg-white/[0.03]' : ''}`
-        }, seat ? renderSeat(seat) : null));
+  const renderSeatCanvas = () => {
+    const {
+      canvasWidth,
+      canvasHeight
+    } = getCanvasGuides();
+    return /*#__PURE__*/React.createElement("div", {
+      ref: seatCanvasViewportRef,
+      className: "min-h-0 flex-1 overflow-auto"
+    }, /*#__PURE__*/React.createElement("div", {
+      ref: seatCanvasRef,
+      className: "relative mx-auto",
+      style: {
+        width: `${canvasWidth}px`,
+        height: `${canvasHeight}px`,
+        minWidth: `${canvasWidth}px`
       }
-      rows.push(/*#__PURE__*/React.createElement("div", {
-        key: vr,
-        className: "flex gap-2 sm:gap-2.5"
-      }, /*#__PURE__*/React.createElement("div", {
-        className: "w-6 flex items-center justify-center text-[10px] sm:text-xs text-slate-400 font-mono shrink-0"
-      }, r), cols));
-    }
-    return rows;
+    }, /*#__PURE__*/React.createElement("div", {
+      className: `pointer-events-none absolute inset-0 rounded-[24px] ${getCanvasGridClass()}`,
+      style: getCanvasGridStyle()
+    }), seats.map(renderSeat)));
   };
   const rootClassName = standalone ? 'teacher-shell-page relative flex h-full overflow-hidden p-2' : `teacher-shell-page fixed inset-0 ${window.__getTeacherLayerClass?.('overlay') || 'z-[10000]'} flex items-center justify-center overflow-hidden bg-black/55 p-2`;
   const shellClassName = standalone ? 'teacher-glass-dark teacher-glass-enter teacher-borderless relative flex h-full w-full flex-col overflow-hidden rounded-[24px]' : 'teacher-glass-dark teacher-glass-enter teacher-borderless relative flex h-[94vh] w-[97vw] max-w-[1500px] flex-col overflow-hidden rounded-[28px]';
@@ -1474,7 +1734,7 @@ function ClassroomView({
     className: "rounded-full border border-amber-200/20 bg-amber-300/10 px-3 py-1 text-[11px] font-bold text-amber-100"
   }, "\u544A\u8B66 ", alertSeatCount), /*#__PURE__*/React.createElement("span", {
     className: "rounded-full border border-sky-200/20 bg-sky-300/10 px-3 py-1 text-[11px] font-bold text-sky-100"
-  }, "\u7F16\u6392 ", gridRows, "\xD7", gridCols), standalone && /*#__PURE__*/React.createElement(WindowControls, null))), /*#__PURE__*/React.createElement("div", {
+  }, "\u7F16\u6392 Free Canvas"), standalone && /*#__PURE__*/React.createElement(WindowControls, null))), /*#__PURE__*/React.createElement("div", {
     className: "mt-2.5 border-t border-white/10 pt-2.5",
     style: standalone ? {
       WebkitAppRegion: 'no-drag'
@@ -1519,8 +1779,7 @@ function ClassroomView({
   }), currentPodiumTop ? '讲台在上' : '讲台在下')), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 flex-wrap justify-end w-full xl:w-auto"
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => onMonitorToggle && onMonitorToggle(),
-    className: `${monitorEnabled ? 'teacher-liquid-primary' : 'teacher-liquid-button'} flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors`,
+    className: `${monitorEnabled ? 'teacher-liquid-primary' : 'teacher-liquid-button'} flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors cursor-default`,
     title: "\u5F00\u542F\u6216\u5173\u95ED\u5B66\u751F\u673A\u76D1\u63A7"
   }, /*#__PURE__*/React.createElement("i", {
     className: `fas ${monitorEnabled ? 'fa-eye' : 'fa-eye-slash'} mr-1.5`
@@ -1528,7 +1787,7 @@ function ClassroomView({
     onClick: handleAutoImport,
     disabled: autoImporting,
     className: "teacher-liquid-primary flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors",
-    title: "\u5C06\u5F53\u524D\u5728\u7EBF\u5B66\u751F\u81EA\u52A8\u6DFB\u52A0\u4E3A\u5EA7\u4F4D"
+    title: "\u81EA\u52A8\u68C0\u6D4B\u5728\u7EBF\u5B66\u751F\u5E76\u6DFB\u52A0\u5230\u5EA7\u4F4D\u8868"
   }, /*#__PURE__*/React.createElement("i", {
     className: `fas ${autoImporting ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} mr-1.5`
   }), "\u81EA\u52A8\u5BFC\u5165"), /*#__PURE__*/React.createElement("div", {
@@ -1557,17 +1816,17 @@ function ClassroomView({
     value: addIp,
     onChange: e => setAddIp(e.target.value),
     placeholder: "IP \u5730\u5740",
-    className: "w-28 rounded-2xl border border-white/14 bg-white/8 px-3 py-2 text-xs text-white placeholder-slate-400 outline-none focus:border-sky-300 sm:w-40 sm:text-sm"
+    className: "w-28 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-xs text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-40 sm:text-sm"
   }), /*#__PURE__*/React.createElement("input", {
     value: addName,
     onChange: e => setAddName(e.target.value),
     placeholder: "\u5B66\u751F\u59D3\u540D",
-    className: "w-24 rounded-2xl border border-white/14 bg-white/8 px-3 py-2 text-xs text-white placeholder-slate-400 outline-none focus:border-sky-300 sm:w-32 sm:text-sm"
+    className: "w-24 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-xs text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-32 sm:text-sm"
   }), /*#__PURE__*/React.createElement("input", {
     value: addStudentId,
     onChange: e => setAddStudentId(e.target.value),
     placeholder: "\u5B66\u53F7",
-    className: "hidden w-28 rounded-2xl border border-white/14 bg-white/8 px-3 py-2 text-sm text-white placeholder-slate-400 outline-none focus:border-sky-300 sm:block"
+    className: "hidden w-28 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-sm text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:block"
   }), /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-slate-300 sm:text-sm"
   }, "\u884C"), /*#__PURE__*/React.createElement("input", {
@@ -1575,7 +1834,7 @@ function ClassroomView({
     min: "1",
     value: addRow,
     onChange: e => setAddRow(e.target.value),
-    className: "w-14 rounded-2xl border border-white/14 bg-white/8 px-2 py-2 text-center text-xs text-white outline-none focus:border-sky-300 sm:w-16 sm:text-sm"
+    className: "w-14 rounded-2xl border border-white/18 bg-slate-950/45 px-2 py-2 text-center text-xs text-slate-100 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-16 sm:text-sm"
   }), /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-slate-300 sm:text-sm"
   }, "\u5217"), /*#__PURE__*/React.createElement("input", {
@@ -1583,7 +1842,7 @@ function ClassroomView({
     min: "1",
     value: addCol,
     onChange: e => setAddCol(e.target.value),
-    className: "w-14 rounded-2xl border border-white/14 bg-white/8 px-2 py-2 text-center text-xs text-white outline-none focus:border-sky-300 sm:w-16 sm:text-sm"
+    className: "w-14 rounded-2xl border border-white/18 bg-slate-950/45 px-2 py-2 text-center text-xs text-slate-100 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-16 sm:text-sm"
   }), /*#__PURE__*/React.createElement("button", {
     onClick: handleAddSeat,
     className: "teacher-liquid-primary rounded-2xl px-4 py-2 text-xs font-bold transition-colors sm:text-sm"
@@ -1661,20 +1920,7 @@ function ClassroomView({
     className: "teacher-glass-light teacher-borderless flex h-full min-h-0 flex-col rounded-[30px] p-2.5 sm:p-4"
   }, currentPodiumTop && /*#__PURE__*/React.createElement("div", {
     className: "pb-3 shrink-0"
-  }, renderPodium()), /*#__PURE__*/React.createElement("div", {
-    className: "min-h-0 flex-1 overflow-auto"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col gap-2.5 items-center min-w-max"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-2 sm:gap-2.5"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-7 shrink-0"
-  }), Array.from({
-    length: gridCols
-  }, (_, i) => /*#__PURE__*/React.createElement("div", {
-    key: i,
-    className: "min-w-[76px] sm:min-w-[96px] text-center text-[10px] sm:text-xs text-slate-400 font-mono"
-  }, i + 1))), renderGrid())), !currentPodiumTop && /*#__PURE__*/React.createElement("div", {
+  }, renderPodium()), renderSeatCanvas(), !currentPodiumTop && /*#__PURE__*/React.createElement("div", {
     className: "pt-3 shrink-0"
   }, renderPodium()))), previewSeat && createPortal(/*#__PURE__*/React.createElement("div", {
     className: `fixed inset-0 ${window.__getTeacherLayerClass?.('modal') || 'z-[10020]'} flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm`,
@@ -3759,7 +4005,13 @@ function ClassroomApp() {
     alertFullscreenExit: true,
     alertTabHidden: true,
     monitorEnabled: false,
-    monitorIntervalSec: 10
+    monitorIntervalSec: 1
+  };
+  const clampMonitorIntervalSec = value => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 1;
+    const clamped = Math.min(5, Math.max(0.5, n));
+    return Math.round(clamped * 2) / 2;
   };
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [studentCount, setStudentCount] = useState(0);
@@ -3812,6 +4064,7 @@ function ClassroomApp() {
           ...settingsRef.current,
           ...saved
         };
+        next.monitorIntervalSec = clampMonitorIntervalSec(next.monitorIntervalSec);
         settingsRef.current = next;
         setSettings(next);
         if (socketRef.current && socketRef.current.connected) {
@@ -4191,6 +4444,7 @@ function ClassroomApp() {
         ...key
       };
     }
+    next.monitorIntervalSec = clampMonitorIntervalSec(next.monitorIntervalSec);
     setSettings(next);
     if (socketRef.current) socketRef.current.emit('host-settings', next);
     window.electronAPI?.saveSettings?.(next);
@@ -4244,10 +4498,14 @@ function ClassroomApp() {
           });
         }
         if (data.role !== 'host' && data.hostSettings) {
-          setSettings(s => ({
-            ...s,
-            ...data.hostSettings
-          }));
+          setSettings(prev => {
+            const next = {
+              ...prev,
+              ...data.hostSettings
+            };
+            next.monitorIntervalSec = clampMonitorIntervalSec(next.monitorIntervalSec);
+            return next;
+          });
           const fs = data.hostSettings?.forceFullscreen ?? true;
           window.electronAPI?.setFullscreen(fs);
         }
@@ -4290,6 +4548,7 @@ function ClassroomApp() {
             ...prev,
             ...s
           };
+          next.monitorIntervalSec = clampMonitorIntervalSec(next.monitorIntervalSec);
           window.electronAPI?.setFullscreen(next.forceFullscreen);
           return next;
         });
@@ -4307,10 +4566,16 @@ function ClassroomApp() {
         setCurrentSlide(data.slideIndex || 0);
         loadCourse(data.courseId, courseCatalogRef.current);
         const fs = data.hostSettings?.forceFullscreen ?? true;
-        if (data.hostSettings) setSettings(s => ({
-          ...s,
-          ...data.hostSettings
-        }));
+        if (data.hostSettings) {
+          setSettings(prev => {
+            const next = {
+              ...prev,
+              ...data.hostSettings
+            };
+            next.monitorIntervalSec = clampMonitorIntervalSec(next.monitorIntervalSec);
+            return next;
+          });
+        }
         window.electronAPI?.classStarted({
           forceFullscreen: fs
         });
@@ -4566,8 +4831,7 @@ function ClassroomApp() {
       studentLog: sharedStudentLog,
       studentScreenshots: studentScreenshots,
       monitorEnabled: !!settings?.monitorEnabled,
-      monitorIntervalSec: settings?.monitorIntervalSec || 10,
-      onMonitorToggle: () => handleSettingsChange('monitorEnabled', !settingsRef.current?.monitorEnabled),
+      monitorIntervalSec: clampMonitorIntervalSec(settings?.monitorIntervalSec),
       podiumAtTop: settings && settings.podiumAtTop,
       onPodiumAtTopChange: v => handleSettingsChange('podiumAtTop', !!v)
     });

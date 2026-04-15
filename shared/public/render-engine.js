@@ -496,7 +496,10 @@ function SyncClassroom({
   const [camSwitching, setCamSwitching] = useState(false);
   const [showCamPicker, setShowCamPicker] = useState(false);
   const stageWrapRef = useRef(null);
-  const [stageScale, setStageScale] = useState(1);
+  const [stageScale, setStageScale] = useState({
+    x: 1,
+    y: 1
+  });
   const contentScale = typeof settings?.renderScale === 'number' && Number.isFinite(settings.renderScale) ? Math.min(Math.max(settings.renderScale, 0.6), 1.2) : 0.96;
   const uiScale = typeof settings?.uiScale === 'number' && Number.isFinite(settings.uiScale) ? Math.min(Math.max(settings.uiScale, 0.8), 1.2) : 1.0;
   const annoCanvasRef = useRef(null);
@@ -906,10 +909,11 @@ function SyncClassroom({
     // 固定按 16:9 比例以及当前缩放计算物理像素尺寸
     // 避免因为 getBoundingClientRect 返回非 16:9 导致画布比例失调变形
     const ui = uiScale || 1;
-    const scale = (stageScale || 1) * ui;
+    const scaleX = (stageScale?.x || 1) * ui;
+    const scaleY = (stageScale?.y || 1) * ui;
     return {
-      w: 1280 * scale,
-      h: 720 * scale
+      w: 1280 * scaleX,
+      h: 720 * scaleY
     };
   };
   const prepareAnnoCanvas = () => {
@@ -1009,8 +1013,12 @@ function SyncClassroom({
       const baseHeight = 720;
       const scaleW = availableWidth / baseWidth;
       const scaleH = availableHeight / baseHeight;
-      const nextScale = Math.max(Math.min(scaleW, scaleH, 0.96), 0.8);
-      setStageScale(nextScale);
+      const nextScaleX = Math.max(Math.min(scaleW, 1.2), 0.6);
+      const nextScaleY = Math.max(Math.min(scaleH, 1.2), 0.6);
+      setStageScale({
+        x: nextScaleX,
+        y: nextScaleY
+      });
     };
     const ro = new ResizeObserver(updateScale);
     if (stageWrapRef.current) ro.observe(stageWrapRef.current);
@@ -1932,7 +1940,7 @@ function SyncClassroom({
     active: showSubmissionsPanel,
     className: 'bg-purple-700/80 hover:bg-purple-600'
   }];
-  const sideToolbarScale = Math.min(Math.max((stageScale || 1) * (uiScale || 1), 0.72), 1);
+  const sideToolbarScale = Math.min(Math.max(Math.min(stageScale?.x || 1, stageScale?.y || 1) * (uiScale || 1), 0.72), 1);
   if (!roleAssigned) {
     return /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col items-center justify-center h-screen bg-slate-900 text-white select-none"
@@ -2017,7 +2025,7 @@ function SyncClassroom({
     style: {
       width: '1280px',
       height: '720px',
-      transform: `scale(${stageScale * uiScale})`,
+      transform: `scale(${(stageScale?.x || 1) * uiScale}, ${(stageScale?.y || 1) * uiScale})`,
       transformOrigin: 'center center',
       transition: 'transform 0.2s ease-out'
     }

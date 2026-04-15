@@ -24,6 +24,8 @@ export interface TeacherWindowSettings {
   alertLeave: boolean;
   alertFullscreenExit: boolean;
   alertTabHidden: boolean;
+  monitorEnabled: boolean;
+  monitorIntervalSec: number;
 }
 
 export interface TeacherSession {

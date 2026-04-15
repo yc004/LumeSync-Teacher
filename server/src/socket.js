@@ -65,8 +65,24 @@ let currentHostSettings = {
     alertFullscreenExit: true,
     alertTabHidden: true,
     monitorEnabled: false,
-    monitorIntervalSec: 10,
+    monitorIntervalSec: 1,
 };
+
+function normalizeMonitorIntervalSec(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 1;
+    const clamped = Math.min(5, Math.max(0.5, n));
+    return Math.round(clamped * 2) / 2;
+}
+
+function normalizeHostSettingsPatch(data) {
+    if (!data || typeof data !== 'object') return {};
+    const next = { ...data };
+    if (Object.prototype.hasOwnProperty.call(next, 'monitorIntervalSec')) {
+        next.monitorIntervalSec = normalizeMonitorIntervalSec(next.monitorIntervalSec);
+    }
+    return next;
+}
 
 const latestScreenshots = new Map();
 const SCREENSHOT_DATA_URL_MAX = 1024 * 1024;
@@ -257,7 +273,7 @@ function setupSocketHandlers(io, {
         socket.on('update-settings', (data) => {
             if (role !== 'host') return;
             const prevMonitorEnabled = !!currentHostSettings.monitorEnabled;
-            currentHostSettings = { ...currentHostSettings, ...data };
+            currentHostSettings = { ...currentHostSettings, ...normalizeHostSettingsPatch(data) };
             if (prevMonitorEnabled && !currentHostSettings.monitorEnabled) {
                 clearAllScreenshots(io);
             }
@@ -269,7 +285,7 @@ function setupSocketHandlers(io, {
             if (role !== 'host') return;
             const prevSyncFollow = currentHostSettings.syncFollow;
             const prevMonitorEnabled = !!currentHostSettings.monitorEnabled;
-            currentHostSettings = { ...currentHostSettings, ...data };
+            currentHostSettings = { ...currentHostSettings, ...normalizeHostSettingsPatch(data) };
             if (prevMonitorEnabled && !currentHostSettings.monitorEnabled) {
                 clearAllScreenshots(io);
             }

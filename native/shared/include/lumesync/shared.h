@@ -29,6 +29,8 @@ struct TeacherWindowSettings {
   bool alertLeave = true;
   bool alertFullscreenExit = true;
   bool alertTabHidden = true;
+  bool monitorEnabled = false;
+  double monitorIntervalSec = 1.0;
 };
 
 std::wstring DefaultAdminPasswordHash();

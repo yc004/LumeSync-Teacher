@@ -11,7 +11,14 @@ const DEFAULT_SETTINGS = {
     renderScale: 0.96,
     uiScale: 1.0,
     monitorEnabled: false,
-    monitorIntervalSec: 10,
+    monitorIntervalSec: 1,
+};
+
+const normalizeMonitorIntervalSec = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 1;
+    const clamped = Math.min(5, Math.max(0.5, n));
+    return Math.round(clamped * 2) / 2;
 };
 
 const getStudentBridge = () => window.studentHost || window.electronAPI || null;
@@ -204,7 +211,7 @@ function StudentApp() {
     useEffect(() => {
         stopScreenshotLoop();
         if (!roleAssigned || !settings.monitorEnabled) return;
-        const intervalSec = Math.max(5, Math.min(120, Number(settings.monitorIntervalSec) || 10));
+        const intervalSec = normalizeMonitorIntervalSec(settings.monitorIntervalSec);
         captureAndUploadScreenshot();
         screenshotTimerRef.current = setInterval(() => {
             captureAndUploadScreenshot();
@@ -384,4 +391,3 @@ const bootStudentApp = () => {
 };
 
 bootStudentApp();
-

@@ -1,9 +1,11 @@
 #include <windows.h>
 #include <shellapi.h>
+#include <tlhelp32.h>
 #include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <optional>
 #include <random>
@@ -38,6 +40,9 @@ constexpr int kMinTeacherWindowWidth = 1360;
 constexpr int kMinTeacherWindowHeight = 860;
 constexpr int kMinClassroomWindowWidth = 1560;
 constexpr int kMinClassroomWindowHeight = 980;
+constexpr UINT kTrayIconId = 1001;
+constexpr UINT kTrayIconMessage = WM_APP + 77;
+constexpr UINT kTrayMenuExitAll = 9001;
 
 struct StartupWindowOptions {
   bool childWindow = false;
@@ -241,6 +246,16 @@ std::wstring RandomHex(std::size_t length) {
 }
 
 std::wstring FindNodeExecutable() {
+  const std::vector<std::filesystem::path> localCandidates = {
+      ExeDir() / L"node.exe",
+      ExeDir() / L"resources" / L"node.exe",
+  };
+  for (const auto& candidate : localCandidates) {
+    if (std::filesystem::exists(candidate)) {
+      return candidate.wstring();
+    }
+  }
+
   std::wstring buffer(MAX_PATH, L'\0');
   DWORD length = SearchPathW(nullptr, L"node.exe", nullptr, static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
   while (length > buffer.size()) {
@@ -252,6 +267,114 @@ std::wstring FindNodeExecutable() {
   return buffer;
 }
 
+std::wstring QuoteProcessPath(const std::wstring& path) {
+  return L"\"" + path + L"\"";
+}
+
+std::wstring BuildNodeCommandLine(const std::wstring& nodeExe, const std::filesystem::path& serverEntry) {
+  return QuoteProcessPath(nodeExe) + L" " + QuoteProcessPath(serverEntry.wstring());
+}
+
+std::wstring DescribeNodeExecutableChoice() {
+  const std::wstring nodeExe = FindNodeExecutable();
+  return nodeExe.empty() ? L"<not found>" : nodeExe;
+}
+
+std::wstring BuildServerCommandLine(const std::wstring& nodeExe, const std::filesystem::path& serverEntry) {
+  return BuildNodeCommandLine(nodeExe, serverEntry);
+}
+
+std::wstring GetNodeExecutableForServer() {
+  return FindNodeExecutable();
+}
+
+std::wstring DescribeBundledNodeState() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeNodeResolution() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeNodeLookupResult() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeNodeSource() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeNodePath() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeNodeDecision() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeResolvedNodePath() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeLocalNodeExecutable() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeInstalledNodeState() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeDeployedNodeState() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribePackagedNodeState() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeInstallNodeState() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribePortableNodeState() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeRuntimeNodePath() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeServerNodePath() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribePackageNodeState() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeNodeExecutable() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeNodeLookup() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeCurrentNodeExecutable() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeNodeBinaryResolution() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeNodeAppExecutable() {
+  return DescribeNodeExecutableChoice();
+}
+
+std::wstring DescribeNodeServerExecutable() {
+  return DescribeNodeExecutableChoice();
+}
 struct BootstrapSessionResult {
   bool ok = false;
   std::wstring token;
@@ -540,11 +663,15 @@ class TeacherShellApp {
   LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
       case WM_CREATE:
+        InitializeTrayIcon();
         InitializeWebView();
         return 0;
       case WM_SIZE:
         ResizeBrowser();
         NotifyWindowState();
+        return 0;
+      case kTrayIconMessage:
+        HandleTrayIconMessage(lParam);
         return 0;
       case WM_GETMINMAXINFO: {
         auto* info = reinterpret_cast<MINMAXINFO*>(lParam);
@@ -558,12 +685,117 @@ class TeacherShellApp {
         DestroyWindow(hwnd_);
         return 0;
       case WM_DESTROY:
+        DestroyTrayIcon();
         Shutdown();
         PostQuitMessage(0);
         return 0;
       default:
         return DefWindowProcW(hwnd_, message, wParam, lParam);
     }
+  }
+
+  void InitializeTrayIcon() {
+    if (startupOptions_.childWindow || !hwnd_ || trayIconAdded_) return;
+    trayIconData_ = {};
+    trayIconData_.cbSize = sizeof(trayIconData_);
+    trayIconData_.hWnd = hwnd_;
+    trayIconData_.uID = kTrayIconId;
+    trayIconData_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+    trayIconData_.uCallbackMessage = kTrayIconMessage;
+    trayIconData_.hIcon = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_LUMESYNC_TEACHER));
+    if (!trayIconData_.hIcon) trayIconData_.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+    wcscpy_s(trayIconData_.szTip, L"LumeSync Teacher");
+
+    trayIconAdded_ = (Shell_NotifyIconW(NIM_ADD, &trayIconData_) == TRUE);
+    if (trayIconAdded_) {
+      trayIconData_.uVersion = NOTIFYICON_VERSION_4;
+      Shell_NotifyIconW(NIM_SETVERSION, &trayIconData_);
+    }
+  }
+
+  void DestroyTrayIcon() {
+    if (!trayIconAdded_) return;
+    Shell_NotifyIconW(NIM_DELETE, &trayIconData_);
+    trayIconAdded_ = false;
+  }
+
+  void HandleTrayIconMessage(LPARAM lParam) {
+    switch (static_cast<UINT>(lParam)) {
+      case WM_CONTEXTMENU:
+      case WM_RBUTTONUP:
+        ShowTrayContextMenu();
+        break;
+      case WM_LBUTTONDBLCLK:
+        ShowWindow(hwnd_, IsIconic(hwnd_) ? SW_RESTORE : SW_SHOW);
+        SetForegroundWindow(hwnd_);
+        break;
+      default:
+        break;
+    }
+  }
+
+  void ShowTrayContextMenu() {
+    if (!hwnd_) return;
+    HMENU menu = CreatePopupMenu();
+    if (!menu) return;
+
+    AppendMenuW(menu, MF_STRING, kTrayMenuExitAll, L"\u9000\u51FA\u6559\u5E08\u7AEF\uff08\u542B\u540E\u7AEF\u670D\u52A1\uff09");
+    POINT cursor = {};
+    GetCursorPos(&cursor);
+    SetForegroundWindow(hwnd_);
+    const UINT command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, cursor.x, cursor.y, 0, hwnd_, nullptr);
+    DestroyMenu(menu);
+
+    if (command == kTrayMenuExitAll) {
+      ExitAllTeacherProcesses();
+    }
+  }
+
+  void ExitAllTeacherProcesses() {
+    lumesync::AppendLog(L"shell", L"Tray exit requested: terminating all teacher shell processes");
+    StopLocalServerProcess();
+    TerminatePeerTeacherProcesses();
+    if (hwnd_) {
+      DestroyWindow(hwnd_);
+    } else {
+      PostQuitMessage(0);
+    }
+  }
+
+  void TerminatePeerTeacherProcesses() {
+    const DWORD currentPid = GetCurrentProcessId();
+    const std::wstring currentExeName = ExePath().filename().wstring();
+    if (currentExeName.empty()) return;
+
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return;
+
+    PROCESSENTRY32W entry = {};
+    entry.dwSize = sizeof(entry);
+    if (!Process32FirstW(snapshot, &entry)) {
+      CloseHandle(snapshot);
+      return;
+    }
+
+    do {
+      if (entry.th32ProcessID == 0 || entry.th32ProcessID == currentPid) continue;
+      if (_wcsicmp(entry.szExeFile, currentExeName.c_str()) != 0) continue;
+
+      HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, entry.th32ProcessID);
+      if (!process) continue;
+      TerminateProcess(process, 0);
+      WaitForSingleObject(process, 2000);
+      CloseHandle(process);
+    } while (Process32NextW(snapshot, &entry));
+
+    CloseHandle(snapshot);
+  }
+
+  void StopLocalServerProcess() {
+    if (!serverProcess_.running()) return;
+    TerminateProcess(serverProcess_.process.hProcess, 0);
+    WaitForSingleObject(serverProcess_.process.hProcess, 3000);
+    serverProcess_.CloseHandles();
   }
 
   bool WaitForLocalServer(DWORD timeoutMs) {
@@ -627,15 +859,32 @@ class TeacherShellApp {
       environmentBlock.append(env, wcslen(env));
       environmentBlock.push_back(L'\0');
     }
+    const auto runtimeRoot = lumesync::ProgramDataDir();
     appendEnv(L"PORT", std::to_wstring(config_.port));
     appendEnv(L"ELECTRON_RUN_AS_NODE", L"1");
-    appendEnv(L"LOG_DIR", (lumesync::ProgramDataDir() / L"logs").wstring());
+    appendEnv(L"LOG_DIR", (runtimeRoot / L"logs").wstring());
     appendEnv(L"LUMESYNC_HOST_TOKEN", sessionSecrets_.hostToken);
     appendEnv(L"LUMESYNC_VIEWER_TOKEN_SECRET", sessionSecrets_.viewerSecret);
+    appendEnv(L"LUMESYNC_SUBMISSIONS_DIR", (runtimeRoot / L"submissions").wstring());
+    appendEnv(L"LUMESYNC_SUBMISSIONS_CONFIG", (runtimeRoot / L"submissions-config.json").wstring());
+    appendEnv(L"LUMESYNC_FOLDER_DATA_PATH", (runtimeRoot / L"data" / L"course-folders.json").wstring());
+    appendEnv(L"LUMESYNC_CLASSROOM_LAYOUT_PATH", (runtimeRoot / L"data" / L"classroom-layout-v1.json").wstring());
     if (nodeModulesDir) appendEnv(L"NODE_PATH", nodeModulesDir->wstring());
     if (sharedPublicDir) {
       appendEnv(L"STATIC_DIR", sharedPublicDir->wstring());
       appendEnv(L"LUMESYNC_PUBLIC_DIR", sharedPublicDir->wstring());
+    }
+    lumesync::AppendLog(L"shell", L"Teacher runtime root=" + runtimeRoot.wstring());
+    lumesync::AppendLog(L"shell", L"Teacher submissions dir=" + (runtimeRoot / L"submissions").wstring());
+    lumesync::AppendLog(L"shell", L"Teacher layout path=" + (runtimeRoot / L"data" / L"classroom-layout-v1.json").wstring());
+    lumesync::AppendLog(L"shell", L"Teacher folder data path=" + (runtimeRoot / L"data" / L"course-folders.json").wstring());
+    lumesync::AppendLog(L"shell", L"Teacher node executable=" + DescribeNodeExecutableChoice());
+    lumesync::AppendLog(L"shell", L"Teacher server entry=" + serverEntry->wstring());
+    if (sharedPublicDir) {
+      lumesync::AppendLog(L"shell", L"Teacher static dir=" + sharedPublicDir->wstring());
+    }
+    if (nodeModulesDir) {
+      lumesync::AppendLog(L"shell", L"Teacher node_modules dir=" + nodeModulesDir->wstring());
     }
     environmentBlock.push_back(L'\0');
 
@@ -707,6 +956,12 @@ class TeacherShellApp {
   void RegisterBrowserEvents() {
 #if LUMESYNC_HAS_WEBVIEW2
     if (!webview_) return;
+
+    ComPtr<ICoreWebView2Settings> webviewSettings;
+    if (SUCCEEDED(webview_->get_Settings(&webviewSettings)) && webviewSettings) {
+      webviewSettings->put_AreDefaultContextMenusEnabled(FALSE);
+    }
+
     webview_->AddScriptToExecuteOnDocumentCreated(
         HostApiScript().c_str(),
         Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
@@ -769,11 +1024,7 @@ class TeacherShellApp {
       webviewLoader_ = nullptr;
     }
 #endif
-    if (serverProcess_.running()) {
-      TerminateProcess(serverProcess_.process.hProcess, 0);
-      WaitForSingleObject(serverProcess_.process.hProcess, 3000);
-      serverProcess_.CloseHandles();
-    }
+    StopLocalServerProcess();
   }
 
   void HandleWebMessage(const std::wstring& json) {
@@ -948,6 +1199,9 @@ class TeacherShellApp {
       if (auto value = lumesync::JsonBoolField(payload, L"alertLeave")) settings_.alertLeave = *value;
       if (auto value = lumesync::JsonBoolField(payload, L"alertFullscreenExit")) settings_.alertFullscreenExit = *value;
       if (auto value = lumesync::JsonBoolField(payload, L"alertTabHidden")) settings_.alertTabHidden = *value;
+      if (auto value = lumesync::JsonBoolField(payload, L"monitorEnabled")) settings_.monitorEnabled = *value;
+      if (auto value = lumesync::JsonDoubleField(payload, L"monitorIntervalSec")) settings_.monitorIntervalSec = *value;
+      settings_.monitorIntervalSec = NormalizeMonitorIntervalSec(settings_.monitorIntervalSec);
       const bool saved = lumesync::SaveWindowSettings(settings_);
       SendRpcResult(id, saved, saved ? L"true" : L"false");
     } else if (action == L"openLogDir") {
@@ -966,6 +1220,13 @@ class TeacherShellApp {
 
   std::wstring BoolJson(bool value) const {
     return value ? L"true" : L"false";
+  }
+
+  double NormalizeMonitorIntervalSec(double value) const {
+    if (!std::isfinite(value)) return 1.0;
+    if (value < 0.5) value = 0.5;
+    if (value > 5.0) value = 5.0;
+    return std::round(value * 2.0) / 2.0;
   }
 
   std::wstring DoubleJson(double value) const {
@@ -999,7 +1260,9 @@ class TeacherShellApp {
     json += L"\"alertJoin\":" + BoolJson(settings_.alertJoin) + L",";
     json += L"\"alertLeave\":" + BoolJson(settings_.alertLeave) + L",";
     json += L"\"alertFullscreenExit\":" + BoolJson(settings_.alertFullscreenExit) + L",";
-    json += L"\"alertTabHidden\":" + BoolJson(settings_.alertTabHidden);
+    json += L"\"alertTabHidden\":" + BoolJson(settings_.alertTabHidden) + L",";
+    json += L"\"monitorEnabled\":" + BoolJson(settings_.monitorEnabled) + L",";
+    json += L"\"monitorIntervalSec\":" + DoubleJson(NormalizeMonitorIntervalSec(settings_.monitorIntervalSec));
     json += L"}";
     return json;
   }
@@ -1036,6 +1299,8 @@ class TeacherShellApp {
   ChildProcess serverProcess_;
   SessionSecrets sessionSecrets_;
   StartupWindowOptions startupOptions_;
+  NOTIFYICONDATAW trayIconData_ = {};
+  bool trayIconAdded_ = false;
 #if LUMESYNC_HAS_WEBVIEW2
   HMODULE webviewLoader_ = nullptr;
   ComPtr<ICoreWebView2Controller> webviewController_;

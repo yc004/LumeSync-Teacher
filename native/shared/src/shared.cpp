@@ -5,6 +5,7 @@
 #include <shlobj.h>
 
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <random>
@@ -89,6 +90,13 @@ std::wstring DoubleText(double value) {
   std::wostringstream stream;
   stream << std::fixed << std::setprecision(2) << value;
   return stream.str();
+}
+
+double NormalizeMonitorIntervalSec(double value) {
+  if (!std::isfinite(value)) return 1.0;
+  if (value < 0.5) value = 0.5;
+  if (value > 5.0) value = 5.0;
+  return std::round(value * 2.0) / 2.0;
 }
 
 std::wstring RandomHex(std::size_t length) {
@@ -199,6 +207,10 @@ TeacherWindowSettings LoadWindowSettings() {
   if (auto value = JsonBoolField(raw, L"alertLeave")) settings.alertLeave = *value;
   if (auto value = JsonBoolField(raw, L"alertFullscreenExit")) settings.alertFullscreenExit = *value;
   if (auto value = JsonBoolField(raw, L"alertTabHidden")) settings.alertTabHidden = *value;
+  if (auto value = JsonBoolField(raw, L"monitorEnabled")) settings.monitorEnabled = *value;
+  if (auto value = JsonDoubleField(raw, L"monitorIntervalSec")) settings.monitorIntervalSec = NormalizeMonitorIntervalSec(*value);
+
+  settings.monitorIntervalSec = NormalizeMonitorIntervalSec(settings.monitorIntervalSec);
 
   return settings;
 }
@@ -216,7 +228,9 @@ bool SaveWindowSettings(const TeacherWindowSettings& settings) {
        << L"  \"alertJoin\": " << BoolText(settings.alertJoin) << L",\n"
        << L"  \"alertLeave\": " << BoolText(settings.alertLeave) << L",\n"
        << L"  \"alertFullscreenExit\": " << BoolText(settings.alertFullscreenExit) << L",\n"
-       << L"  \"alertTabHidden\": " << BoolText(settings.alertTabHidden) << L"\n"
+       << L"  \"alertTabHidden\": " << BoolText(settings.alertTabHidden) << L",\n"
+       << L"  \"monitorEnabled\": " << BoolText(settings.monitorEnabled) << L",\n"
+       << L"  \"monitorIntervalSec\": " << DoubleText(NormalizeMonitorIntervalSec(settings.monitorIntervalSec)) << L"\n"
        << L"}\n";
 
   return WriteTextFile(SettingsPath(), json.str());

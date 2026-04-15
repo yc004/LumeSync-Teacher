@@ -363,7 +363,13 @@ function ClassroomApp() {
         alertFullscreenExit: true,
         alertTabHidden: true,
         monitorEnabled: false,
-        monitorIntervalSec: 10,
+        monitorIntervalSec: 1,
+    };
+    const clampMonitorIntervalSec = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return 1;
+        const clamped = Math.min(5, Math.max(0.5, n));
+        return Math.round(clamped * 2) / 2;
     };
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [studentCount, setStudentCount] = useState(0);
@@ -403,6 +409,7 @@ function ClassroomApp() {
             window.electronAPI.getSettings().then(saved => {
                 if (!saved) return;
                 const next = { ...settingsRef.current, ...saved };
+                next.monitorIntervalSec = clampMonitorIntervalSec(next.monitorIntervalSec);
                 settingsRef.current = next;
                 setSettings(next);
                 if (socketRef.current && socketRef.current.connected) {
@@ -753,6 +760,7 @@ function ClassroomApp() {
         if (typeof key === 'object' && key !== null) {
             next = { ...settingsRef.current, ...key };
         }
+        next.monitorIntervalSec = clampMonitorIntervalSec(next.monitorIntervalSec);
         
         setSettings(next);
         if (socketRef.current) socketRef.current.emit('host-settings', next);
@@ -809,7 +817,11 @@ function ClassroomApp() {
                 }
 
                 if (data.role !== 'host' && data.hostSettings) {
-                    setSettings(s => ({ ...s, ...data.hostSettings }));
+                    setSettings(prev => {
+                        const next = { ...prev, ...data.hostSettings };
+                        next.monitorIntervalSec = clampMonitorIntervalSec(next.monitorIntervalSec);
+                        return next;
+                    });
                     const fs = data.hostSettings?.forceFullscreen ?? true;
                     window.electronAPI?.setFullscreen(fs);
                 }
@@ -849,6 +861,7 @@ function ClassroomApp() {
             socketRef.current.on('host-settings', (s) => {
                 setSettings(prev => {
                     const next = { ...prev, ...s };
+                    next.monitorIntervalSec = clampMonitorIntervalSec(next.monitorIntervalSec);
                     window.electronAPI?.setFullscreen(next.forceFullscreen);
                     return next;
                 });
@@ -868,7 +881,13 @@ function ClassroomApp() {
                 setCurrentSlide(data.slideIndex || 0);
                 loadCourse(data.courseId, courseCatalogRef.current);
                 const fs = data.hostSettings?.forceFullscreen ?? true;
-                if (data.hostSettings) setSettings(s => ({ ...s, ...data.hostSettings }));
+                if (data.hostSettings) {
+                    setSettings(prev => {
+                        const next = { ...prev, ...data.hostSettings };
+                        next.monitorIntervalSec = clampMonitorIntervalSec(next.monitorIntervalSec);
+                        return next;
+                    });
+                }
                 window.electronAPI?.classStarted({ forceFullscreen: fs });
             });
 
@@ -1119,8 +1138,7 @@ function ClassroomApp() {
                 studentLog={sharedStudentLog}
                 studentScreenshots={studentScreenshots}
                 monitorEnabled={!!settings?.monitorEnabled}
-                monitorIntervalSec={settings?.monitorIntervalSec || 10}
-                onMonitorToggle={() => handleSettingsChange('monitorEnabled', !settingsRef.current?.monitorEnabled)}
+                monitorIntervalSec={clampMonitorIntervalSec(settings?.monitorIntervalSec)}
                 podiumAtTop={settings && settings.podiumAtTop}
                 onPodiumAtTopChange={(v) => handleSettingsChange('podiumAtTop', !!v)}
             />

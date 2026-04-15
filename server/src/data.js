@@ -1,240 +1,176 @@
 // ========================================================
-// 文件夹数据管理
+// 文件夹数据管理（基于真实文件系统）
 // ========================================================
 
 const path = require('path');
 const fs = require('fs');
 const { config } = require('./config');
+const { scanCourses, normalizeRelativePath, makeFolderId } = require('./courses');
 
-// 加载文件夹配置
-function loadFolderData() {
+function decodeFolderId(folderId) {
+    if (!folderId || folderId === 'null') return '';
+    const text = String(folderId || '');
+    if (!text.startsWith('folder_')) return '';
     try {
-        if (fs.existsSync(config.folderDataPath)) {
-            const content = fs.readFileSync(config.folderDataPath, 'utf-8');
-            return JSON.parse(content);
-        }
-    } catch (err) {
-        console.warn('[loadFolderData] Failed to load folder data:', err.message);
-    }
-    return { folders: [], courses: {} };
-}
-
-// 保存文件夹配置
-function saveFolderData(data) {
-    try {
-        const dataDir = path.dirname(config.folderDataPath);
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
-        fs.writeFileSync(config.folderDataPath, JSON.stringify(data, null, 2), 'utf-8');
-        return true;
-    } catch (err) {
-        console.error('[saveFolderData] Failed to save folder data:', err.message);
-        return false;
+        return normalizeRelativePath(Buffer.from(text.slice(7), 'base64url').toString('utf8'));
+    } catch (_) {
+        return '';
     }
 }
 
-// 创建文件夹
+function resolveFolderAbsolutePath(folderId) {
+    const relativePath = decodeFolderId(folderId);
+    return path.join(config.coursesDir, relativePath);
+}
+
+function toFolderEntry(relativePath) {
+    const normalized = normalizeRelativePath(relativePath);
+    return {
+        id: makeFolderId(normalized),
+        name: path.basename(normalized),
+        icon: '📁',
+        path: normalized,
+        parentId: makeFolderId(path.posix.dirname(normalized) === '.' ? '' : path.posix.dirname(normalized))
+    };
+}
+
+function ensureUniqueTarget(targetPath) {
+    if (fs.existsSync(targetPath)) {
+        throw new Error(`目标已存在: ${path.basename(targetPath)}`);
+    }
+}
+
 function createFolder(name, icon, parentId) {
     if (!name || !name.trim()) {
         return { success: false, error: '文件夹名称不能为空' };
     }
 
-    const folderData = loadFolderData();
-    folderData.folders = folderData.folders || [];
+    const parentPath = decodeFolderId(parentId);
+    const absoluteParent = path.join(config.coursesDir, parentPath);
+    const targetPath = path.join(absoluteParent, name.trim());
 
-    // 检查是否已存在同名文件夹
-    const parentToCheck = parentId === null || parentId === undefined ? null : parentId;
-    const existingFolder = folderData.folders.find(f => {
-        const folderParent = f.parentId === null || f.parentId === undefined ? null : f.parentId;
-        return f.name === name.trim() && folderParent === parentToCheck;
-    });
-
-    if (existingFolder) {
-        return { success: false, error: `文件夹 "${name}" 已存在` };
-    }
-
-    const folderId = `folder-${Date.now()}`;
-    const newFolder = {
-        id: folderId,
-        name: name.trim(),
-        icon: icon || '📁',
-        parentId: parentId || null,
-        createdAt: new Date().toISOString()
-    };
-
-    folderData.folders.push(newFolder);
-
-    if (saveFolderData(folderData)) {
-        return { success: true, folder: newFolder, folderData };
-    } else {
-        return { success: false, error: '保存失败' };
+    try {
+        ensureUniqueTarget(targetPath);
+        fs.mkdirSync(targetPath, { recursive: true });
+        return { success: true, folder: toFolderEntry(path.posix.join(parentPath, name.trim())) };
+    } catch (err) {
+        return { success: false, error: err.message || '创建失败' };
     }
 }
 
-// 删除文件夹（支持递归删除子文件夹）
 function deleteFolder(folderId) {
     if (!folderId) {
         return { success: false, error: '缺少 folderId 参数' };
     }
 
-    const folderData = loadFolderData();
-    if (!folderData.folders || !folderData.folders.find(f => f.id === folderId)) {
+    const relativePath = decodeFolderId(folderId);
+    const absolutePath = path.join(config.coursesDir, relativePath);
+    const parentRelative = normalizeRelativePath(path.posix.dirname(relativePath) === '.' ? '' : path.posix.dirname(relativePath));
+    const absoluteParent = path.join(config.coursesDir, parentRelative);
+
+    if (!relativePath || !fs.existsSync(absolutePath)) {
         return { success: false, error: '文件夹不存在' };
     }
 
-    // 递归获取所有子文件夹ID
-    const getSubFolderIds = (parentId) => {
-        const subFolders = folderData.folders.filter(f => f.parentId === parentId);
-        let ids = subFolders.map(f => f.id);
-        subFolders.forEach(sub => {
-            ids = ids.concat(getSubFolderIds(sub.id));
-        });
-        return ids;
-    };
-
-    const allFolderIdsToDelete = [folderId, ...getSubFolderIds(folderId)];
-
-    // 将这些文件夹中的课件移出文件夹
-    if (folderData.courses) {
-        for (const courseId in folderData.courses) {
-            if (allFolderIdsToDelete.includes(folderData.courses[courseId])) {
-                delete folderData.courses[courseId];
-            }
-        }
-    }
-
-    // 删除所有这些文件夹
-    folderData.folders = folderData.folders.filter(f => !allFolderIdsToDelete.includes(f.id));
-
-    if (saveFolderData(folderData)) {
-        return { success: true, folderData };
-    } else {
-        return { success: false, error: '保存失败' };
+    try {
+        fs.rmSync(absolutePath, { recursive: true, force: true });
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.message || '删除失败' };
     }
 }
 
-// 移动文件夹
 function moveFolder(folderId, targetFolderId) {
     if (!folderId) {
         return { success: false, error: '缺少 folderId 参数' };
     }
 
-    const folderData = loadFolderData();
+    const sourceRelative = decodeFolderId(folderId);
+    const targetParentRelative = decodeFolderId(targetFolderId);
+    const sourcePath = path.join(config.coursesDir, sourceRelative);
+    const targetParentPath = path.join(config.coursesDir, targetParentRelative);
+    const targetPath = path.join(targetParentPath, path.basename(sourcePath));
 
-    // 验证源文件夹是否存在
-    const folderToMove = folderData.folders?.find(f => f.id === folderId);
-    if (!folderToMove) {
+    if (!sourceRelative || !fs.existsSync(sourcePath)) {
         return { success: false, error: '源文件夹不存在' };
     }
 
-    // 验证目标文件夹是否存在（如果是 'null' 则表示移到根目录）
-    if (targetFolderId !== 'null' && !folderData.folders?.find(f => f.id === targetFolderId)) {
-        return { success: false, error: '目标文件夹不存在' };
-    }
-
-    // 不能将文件夹移动到自己的子文件夹中
-    if (targetFolderId !== 'null') {
-        const isDescendant = (parentId, childId) => {
-            if (parentId === childId) return true;
-            const childFolders = folderData.folders.filter(f => f.parentId === parentId);
-            for (const child of childFolders) {
-                if (isDescendant(child.id, childId)) return true;
-            }
-            return false;
-        };
-        if (isDescendant(folderId, targetFolderId)) {
+    try {
+        const normalizedSource = path.resolve(sourcePath);
+        const normalizedTargetParent = path.resolve(targetParentPath);
+        if (normalizedTargetParent === normalizedSource || normalizedTargetParent.startsWith(normalizedSource + path.sep)) {
             return { success: false, error: '不能将文件夹移动到其子文件夹中' };
         }
-    }
-
-    // 更新文件夹的parentId
-    folderToMove.parentId = targetFolderId === 'null' ? null : targetFolderId;
-
-    if (saveFolderData(folderData)) {
-        return { success: true, folderData };
-    } else {
-        return { success: false, error: '保存失败' };
+        ensureUniqueTarget(targetPath);
+        fs.renameSync(sourcePath, targetPath);
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.message || '移动失败' };
     }
 }
 
-// 重命名文件夹
 function renameFolder(folderId, name, icon) {
     if (!folderId) {
         return { success: false, error: '缺少 folderId 参数' };
     }
-
     if (!name || !name.trim()) {
         return { success: false, error: '文件夹名称不能为空' };
     }
 
-    const folderData = loadFolderData();
-    const folder = folderData.folders?.find(f => f.id === folderId);
+    const relativePath = decodeFolderId(folderId);
+    const sourcePath = path.join(config.coursesDir, relativePath);
+    const parentRelative = normalizeRelativePath(path.posix.dirname(relativePath) === '.' ? '' : path.posix.dirname(relativePath));
+    const targetRelative = normalizeRelativePath(path.posix.join(parentRelative, name.trim()));
+    const targetPath = path.join(config.coursesDir, targetRelative);
 
-    if (!folder) {
+    if (!relativePath || !fs.existsSync(sourcePath)) {
         return { success: false, error: '文件夹不存在' };
     }
 
-    // 检查是否已存在同名文件夹（排除自己）
-    const folderParent = folder.parentId === null || folder.parentId === undefined ? null : folder.parentId;
-    const existingFolder = folderData.folders.find(f => {
-        const fParent = f.parentId === null || f.parentId === undefined ? null : f.parentId;
-        return f.id !== folderId && f.name === name.trim() && fParent === folderParent;
-    });
-
-    if (existingFolder) {
-        return { success: false, error: `文件夹 "${name}" 已存在` };
-    }
-
-    folder.name = name.trim();
-    if (icon !== undefined) {
-        folder.icon = icon;
-    }
-    folder.updatedAt = new Date().toISOString();
-
-    if (saveFolderData(folderData)) {
-        return { success: true, folder, folderData };
-    } else {
-        return { success: false, error: '保存失败' };
+    try {
+        ensureUniqueTarget(targetPath);
+        fs.renameSync(sourcePath, targetPath);
+        return { success: true, folder: toFolderEntry(targetRelative) };
+    } catch (err) {
+        return { success: false, error: err.message || '重命名失败' };
     }
 }
 
-// 移动课件到文件夹
 function moveCourseToFolder(courseId, folderId) {
     if (!courseId) {
         return { success: false, error: '缺少 courseId 参数' };
     }
 
-    const folderData = loadFolderData();
-
-    // 验证文件夹是否存在（如果是 'null' 则表示移出文件夹）
-    if (folderId !== 'null' && !folderData.folders?.find(f => f.id === folderId)) {
-        return { success: false, error: '目标文件夹不存在' };
+    const catalog = scanCourses();
+    const course = catalog.courses.find(c => c.id === courseId);
+    if (!course) {
+        return { success: false, error: '课件不存在' };
     }
 
-    // 更新课件所属文件夹
-    folderData.courses = folderData.courses || {};
-    if (folderId === 'null') {
-        // 移出文件夹
-        delete folderData.courses[courseId];
-    } else {
-        // 移入文件夹
-        folderData.courses[courseId] = folderId;
-    }
+    const sourcePath = path.join(config.coursesDir, course.file);
+    const targetFolderPath = resolveFolderAbsolutePath(folderId);
+    const targetPath = path.join(targetFolderPath, path.basename(sourcePath));
 
-    if (saveFolderData(folderData)) {
-        return { success: true, folderData };
-    } else {
-        return { success: false, error: '保存失败' };
+    try {
+        if (path.resolve(sourcePath) === path.resolve(targetPath)) {
+            return { success: true };
+        }
+        ensureUniqueTarget(targetPath);
+        fs.mkdirSync(targetFolderPath, { recursive: true });
+        fs.renameSync(sourcePath, targetPath);
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.message || '移动失败' };
     }
 }
 
 module.exports = {
-    loadFolderData,
-    saveFolderData,
     createFolder,
     deleteFolder,
     moveFolder,
     renameFolder,
-    moveCourseToFolder
+    moveCourseToFolder,
+    decodeFolderId,
+    resolveFolderAbsolutePath,
+    toFolderEntry
 };

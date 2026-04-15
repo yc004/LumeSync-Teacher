@@ -53,8 +53,11 @@ Section "Install" SecInstall
     RMDir /r /REBOOTOK "$INSTDIR\public"
     RMDir /r /REBOOTOK "$INSTDIR\shared"
     RMDir /r /REBOOTOK "$INSTDIR\packages"
+    RMDir /r /REBOOTOK "$INSTDIR\core"
     RMDir /r /REBOOTOK "$INSTDIR\node_modules"
     RMDir /r /REBOOTOK "$INSTDIR\common"
+    Delete /REBOOTOK "$INSTDIR\node.exe"
+    Delete /REBOOTOK "$INSTDIR\Uninstall.exe"
     Delete /REBOOTOK "$INSTDIR\${APP_EXE}"
     Delete /REBOOTOK "$INSTDIR\WebView2Loader.dll"
   ${EndIf}

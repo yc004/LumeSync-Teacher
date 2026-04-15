@@ -1,8 +1,10 @@
 #include <windows.h>
+#include <commdlg.h>
 #include <shellapi.h>
 #include <tlhelp32.h>
 #include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "comdlg32.lib")
 
 #include <algorithm>
 #include <cmath>
@@ -229,6 +231,47 @@ std::optional<std::filesystem::path> FindSharedPublicDir() {
       ExeDir().parent_path().parent_path().parent_path().parent_path().parent_path() / L"shared" / L"public",
       std::filesystem::current_path() / L"shared" / L"public",
   });
+}
+
+std::wstring ToLowerCopy(std::wstring value) {
+  std::transform(value.begin(), value.end(), value.begin(), towlower);
+  return value;
+}
+
+std::wstring NormalizeCourseRelativePath(const std::wstring& raw) {
+  if (raw.empty()) return L"";
+  std::filesystem::path input(raw);
+  if (input.is_absolute()) return L"";
+
+  std::filesystem::path normalized;
+  for (const auto& part : input) {
+    const std::wstring segment = part.wstring();
+    if (segment.empty() || segment == L".") continue;
+    if (segment == L".." || segment.find(L':') != std::wstring::npos) return L"";
+    normalized /= segment;
+  }
+
+  const std::wstring generic = normalized.generic_wstring();
+  if (generic.empty()) return L"";
+  if (generic.rfind(L"../", 0) == 0 || generic.find(L"/../") != std::wstring::npos) return L"";
+  return generic;
+}
+
+std::optional<std::filesystem::path> ResolveNativeCoursesDir() {
+  if (const wchar_t* envCourses = _wgetenv(L"LUMESYNC_COURSES_DIR")) {
+    std::filesystem::path path(envCourses);
+    if (!path.empty() && std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  const auto sharedPublicDir = FindSharedPublicDir();
+  if (sharedPublicDir) {
+    const auto coursesDir = *sharedPublicDir / L"courses";
+    if (std::filesystem::exists(coursesDir)) return coursesDir;
+  }
+
+  return std::nullopt;
 }
 
 std::wstring RandomHex(std::size_t length) {
@@ -1159,6 +1202,102 @@ class TeacherShellApp {
     return json.str();
   }
 
+  std::optional<std::filesystem::path> ShowSaveCourseDialog(const std::wstring& suggestedFileName, const std::wstring& format, bool* canceled) {
+    if (canceled) *canceled = false;
+
+    wchar_t fileBuffer[4096] = {};
+    const std::wstring seedName = suggestedFileName.empty() ? (L"course." + format) : suggestedFileName;
+    wcsncpy_s(fileBuffer, seedName.c_str(), _TRUNCATE);
+
+    static const wchar_t kPdfFilter[] = L"PDF Files (*.pdf)\0*.pdf\0All Files (*.*)\0*.*\0\0";
+    static const wchar_t kLumeFilter[] = L"Lume Course Files (*.lume)\0*.lume\0All Files (*.*)\0*.*\0\0";
+    const bool isPdf = (format == L"pdf");
+
+    OPENFILENAMEW ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd_;
+    ofn.lpstrFile = fileBuffer;
+    ofn.nMaxFile = static_cast<DWORD>(std::size(fileBuffer));
+    ofn.lpstrFilter = isPdf ? kPdfFilter : kLumeFilter;
+    ofn.nFilterIndex = 1;
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
+    ofn.lpstrDefExt = isPdf ? L"pdf" : L"lume";
+
+    if (!GetSaveFileNameW(&ofn)) {
+      if (canceled && CommDlgExtendedError() == 0) *canceled = true;
+      return std::nullopt;
+    }
+
+    return std::filesystem::path(fileBuffer);
+  }
+
+  bool ExportCourseFromPayload(const std::wstring& payload, std::wstring* resultJson, std::wstring* errorMessage) {
+    const std::wstring courseFileRaw = lumesync::JsonStringField(payload, L"courseFile").value_or(L"");
+    const std::wstring formatRaw = ToLowerCopy(lumesync::JsonStringField(payload, L"format").value_or(L"lume"));
+    const std::wstring title = lumesync::JsonStringField(payload, L"title").value_or(L"");
+
+    if (courseFileRaw.empty()) {
+      if (errorMessage) *errorMessage = L"courseFile is required";
+      return false;
+    }
+
+    const std::wstring format = (formatRaw == L"pdf") ? L"pdf" : L"lume";
+    const std::wstring normalizedRelative = NormalizeCourseRelativePath(courseFileRaw);
+    if (normalizedRelative.empty()) {
+      if (errorMessage) *errorMessage = L"invalid courseFile";
+      return false;
+    }
+
+    const auto coursesDir = ResolveNativeCoursesDir();
+    if (!coursesDir) {
+      if (errorMessage) *errorMessage = L"courses directory not found";
+      return false;
+    }
+
+    std::filesystem::path relativePath(normalizedRelative);
+    std::filesystem::path sourceRelative = relativePath;
+    sourceRelative.replace_extension(format);
+
+    const std::filesystem::path sourcePath = *coursesDir / sourceRelative;
+    if (!std::filesystem::exists(sourcePath) || !std::filesystem::is_regular_file(sourcePath)) {
+      if (errorMessage) *errorMessage = L"source file not found";
+      return false;
+    }
+
+    std::wstring suggestedName = sourceRelative.filename().wstring();
+    if (suggestedName.empty()) {
+      const std::wstring titleSafe = title.empty() ? L"course" : title;
+      suggestedName = titleSafe + L"." + format;
+    }
+
+    bool canceled = false;
+    const auto targetPath = ShowSaveCourseDialog(suggestedName, format, &canceled);
+    if (!targetPath) {
+      if (canceled) {
+        if (resultJson) *resultJson = L"{\"success\":false,\"canceled\":true}";
+        return true;
+      }
+      if (errorMessage) *errorMessage = L"save dialog failed";
+      return false;
+    }
+
+    std::error_code copyError;
+    std::filesystem::create_directories(targetPath->parent_path(), copyError);
+    copyError.clear();
+    std::filesystem::copy_file(sourcePath, *targetPath, std::filesystem::copy_options::overwrite_existing, copyError);
+    if (copyError) {
+      if (errorMessage) *errorMessage = L"failed to save file";
+      return false;
+    }
+
+    const std::wstring fileName = targetPath->filename().wstring();
+    if (resultJson) {
+      *resultJson = L"{\"success\":true,\"filePath\":\"" + lumesync::JsonEscape(targetPath->wstring()) +
+                    L"\",\"filename\":\"" + lumesync::JsonEscape(fileName) + L"\"}";
+    }
+    return true;
+  }
+
   void HandleRpc(const std::wstring& id, const std::wstring& action, const std::wstring& payload) {
     if (action == L"getConfig") {
       config_ = lumesync::LoadConfig();
@@ -1211,7 +1350,12 @@ class TeacherShellApp {
     } else if (action == L"getLogDir") {
       const auto logDir = lumesync::ProgramDataDir() / L"logs";
       SendRpcResult(id, true, L"\"" + lumesync::JsonEscape(logDir.wstring()) + L"\"");
-    } else if (action == L"selectSubmissionDir" || action == L"importCourse" || action == L"exportCourse") {
+    } else if (action == L"exportCourse") {
+      std::wstring responsePayload = L"null";
+      std::wstring error;
+      const bool ok = ExportCourseFromPayload(payload, &responsePayload, &error);
+      SendRpcResult(id, ok, responsePayload, ok ? L"" : error);
+    } else if (action == L"selectSubmissionDir" || action == L"importCourse") {
       SendRpcResult(id, true, L"null");
     } else {
       SendRpcResult(id, false, L"null", L"unknown action");

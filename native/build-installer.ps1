@@ -17,9 +17,18 @@ if (Test-Path $StagingSource) {
 $OutputPath = Join-Path $RepoRoot $OutputDir
 $ScriptPath = Join-Path $RepoRoot "native/installer/teacher-native.nsi"
 $OutputFile = Join-Path $OutputPath $OutputName
+$CoreInstallerName = "LumeSync Teacher Core Setup.exe"
+$CoreInstallerPath = Join-Path $OutputPath $CoreInstallerName
+$BootstrapperProject = Join-Path $RepoRoot "native/modern-bootstrapper/LumeSyncTeacherInstaller.csproj"
+$BootstrapperPublishDir = Join-Path $OutputPath "bootstrapper-publish"
+$BootstrapperExeName = "LumeSyncTeacherInstaller.exe"
+$BootstrapperExePath = Join-Path $BootstrapperPublishDir $BootstrapperExeName
 
 if (-not (Test-Path $ScriptPath)) {
   throw "Missing NSIS script: $ScriptPath"
+}
+if (-not (Test-Path $BootstrapperProject)) {
+  throw "Missing bootstrapper project: $BootstrapperProject"
 }
 
 New-Item -ItemType Directory -Force -Path $OutputPath | Out-Null
@@ -52,19 +61,48 @@ if (-not $Makensis) {
   throw "NSIS makensis.exe was not found. Install NSIS or place makensis.exe in PATH."
 }
 
-$Args = @(
+$NsisArgs = @(
   "/DSOURCE_DIR=$SourcePath",
-  "/DOUTPUT_FILE=$OutputFile",
+  "/DOUTPUT_FILE=$CoreInstallerPath",
   $ScriptPath
 )
 
 Write-Host "[native-installer] Using NSIS: $Makensis"
 Write-Host "[native-installer] Source: $SourcePath"
-Write-Host "[native-installer] Output: $OutputFile"
+Write-Host "[native-installer] Core installer output: $CoreInstallerPath"
 
-& $Makensis @Args
+& $Makensis @NsisArgs
 if ($LASTEXITCODE -ne 0) {
   throw "makensis failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "[native-installer] Created: $OutputFile"
+if (Test-Path $BootstrapperPublishDir) {
+  Remove-Item -LiteralPath $BootstrapperPublishDir -Recurse -Force
+}
+
+$DotnetArgs = @(
+  "publish",
+  $BootstrapperProject,
+  "-c", "Release",
+  "-r", "win-x64",
+  "--self-contained", "true",
+  "/p:PublishSingleFile=true",
+  "/p:IncludeNativeLibrariesForSelfExtract=true",
+  "/p:PayloadInstallerPath=$CoreInstallerPath",
+  "-o", $BootstrapperPublishDir
+)
+
+Write-Host "[native-installer] Building modern bootstrapper..."
+& dotnet @DotnetArgs
+if ($LASTEXITCODE -ne 0) {
+  throw "dotnet publish failed with exit code $LASTEXITCODE"
+}
+
+if (-not (Test-Path $BootstrapperExePath)) {
+  throw "Bootstrapper executable not found: $BootstrapperExePath"
+}
+
+Copy-Item -LiteralPath $BootstrapperExePath -Destination $OutputFile -Force
+Remove-Item -LiteralPath $CoreInstallerPath -Force
+
+Write-Host "[native-installer] Created modern installer: $OutputFile"

@@ -6,7 +6,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { config, getSubmissionsDir, setSubmissionsDir } = require('./config');
-const { scanCourses, deleteCourse } = require('./courses');
+const { scanCourses, deleteCourse, normalizeRelativePath } = require('./courses');
 const {
     createFolder,
     deleteFolder,
@@ -23,6 +23,37 @@ const router = express.Router();
 let currentCourseId = null;
 let currentSlideIndex = 0;
 let courseCatalog = scanCourses();
+
+function resolveCourseExportTarget(course, format) {
+    const normalizedFormat = String(format || '').trim().toLowerCase();
+    if (normalizedFormat !== 'pdf' && normalizedFormat !== 'lume') {
+        return { success: false, error: 'Invalid export format' };
+    }
+
+    const relativeFile = normalizeRelativePath(course?.file || '');
+    if (!relativeFile) {
+        return { success: false, error: 'Course file is missing' };
+    }
+
+    const baseRelativePath = normalizeRelativePath(relativeFile.replace(/\.[^/.\\]+$/i, ''));
+    const targetRelativePath = `${baseRelativePath}.${normalizedFormat}`;
+    const coursesRoot = path.resolve(config.coursesDir);
+    const targetAbsolutePath = path.resolve(coursesRoot, targetRelativePath);
+
+    if (targetAbsolutePath !== coursesRoot && !targetAbsolutePath.startsWith(`${coursesRoot}${path.sep}`)) {
+        return { success: false, error: 'Invalid course path' };
+    }
+
+    if (!fs.existsSync(targetAbsolutePath) || !fs.statSync(targetAbsolutePath).isFile()) {
+        return { success: false, error: `Course ${normalizedFormat.toUpperCase()} source not found` };
+    }
+
+    return {
+        success: true,
+        absolutePath: targetAbsolutePath,
+        downloadName: `${path.basename(baseRelativePath)}.${normalizedFormat}`
+    };
+}
 
 // 健康检查
 router.get('/health', (req, res) => {
@@ -89,6 +120,32 @@ router.delete('/delete-course', (req, res) => {
     } else {
         res.status(404).json(result);
     }
+});
+
+// 导出课件文件（PDF / 原始 .lume）
+router.get('/export-course/:courseId', (req, res) => {
+    const { courseId } = req.params;
+    const { format } = req.query;
+
+    if (!courseId) {
+        return res.status(400).json({ success: false, error: 'Missing courseId parameter' });
+    }
+
+    const catalog = typeof courseCatalog === 'object' && Array.isArray(courseCatalog.courses)
+        ? courseCatalog
+        : { courses: Array.isArray(courseCatalog) ? courseCatalog : [] };
+    const course = catalog.courses.find((item) => item.id === courseId);
+    if (!course) {
+        return res.status(404).json({ success: false, error: 'Course not found' });
+    }
+
+    const resolved = resolveCourseExportTarget(course, format);
+    if (!resolved.success) {
+        const isInvalidFormat = String(resolved.error || '').toLowerCase().includes('format');
+        return res.status(isInvalidFormat ? 400 : 404).json({ success: false, error: resolved.error });
+    }
+
+    res.download(resolved.absolutePath, resolved.downloadName);
 });
 
 // ========================================================

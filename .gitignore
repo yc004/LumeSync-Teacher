@@ -2,6 +2,8 @@
 dist/
 out/
 build/
+bin/
+obj/
 *.log
 .DS_Store
 Thumbs.db

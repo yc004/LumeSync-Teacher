@@ -32,11 +32,11 @@ const {
     setCourseCatalog
 } = require('./src/routes');
 const { scanCourses } = require('./src/courses');
-const { resolveCorePackagePath } = require('./src/core-paths');
+const { loadCoreModule } = require('./src/core-paths');
 
 const runtime = require('./src/socket');
-const { createViewerSessionToken, normalizeIp } = require(resolveCorePackagePath('runtime-control', 'identity'));
-const renderEngine = require(resolveCorePackagePath('render-engine'));
+const { createViewerSessionToken, normalizeIp } = loadCoreModule('identity');
+const renderEngine = loadCoreModule('render-engine');
 
 const VIEWER_TOKEN_TTL_SEC = Number(process.env.LUMESYNC_VIEWER_TOKEN_TTL_SEC || 14400);
 const VIEWER_TOKEN_SECRET = String(process.env.LUMESYNC_VIEWER_TOKEN_SECRET || '');
@@ -71,7 +71,9 @@ try {
 
 app.use(fontCacheCleaner);
 
-const engineDir = renderEngine.resolveEngineSrcDir();
+const engineDir = renderEngine.resolveEngineDevelopmentSrcDir
+    ? renderEngine.resolveEngineDevelopmentSrcDir()
+    : renderEngine.resolveEngineSrcDir();
 app.use('/engine', express.static(engineDir));
 
 const staticDir = process.env.STATIC_DIR || config.cacheRoot;

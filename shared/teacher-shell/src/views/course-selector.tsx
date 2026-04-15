@@ -228,6 +228,57 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
         }
     };
 
+    const handleExportCourse = async (course, format) => {
+        if (!course?.id) return;
+
+        const normalizedFormat = String(format || '').toLowerCase();
+        if (normalizedFormat !== 'pdf' && normalizedFormat !== 'lume') return;
+
+        try {
+            if (window.electronAPI?.exportCourse) {
+                const nativeResult = await window.electronAPI.exportCourse({
+                    courseFile: course.file,
+                    format: normalizedFormat,
+                    title: course.title
+                });
+                if (nativeResult?.canceled) return;
+                if (nativeResult?.success) {
+                    return;
+                }
+                // 兼容旧版教师壳：exportCourse 可能返回 null（未实现）或失败，自动回退到 HTTP 下载。
+            }
+
+            const response = await fetch(`/api/export-course/${encodeURIComponent(course.id)}?format=${encodeURIComponent(normalizedFormat)}`);
+            if (!response.ok) {
+                let errMsg = '导出失败';
+                try {
+                    const payload = await response.json();
+                    if (payload?.error) errMsg = payload.error;
+                } catch (_) {}
+                alert(`导出失败：${errMsg}`);
+                return;
+            }
+
+            const blob = await response.blob();
+            const fallbackName = `${course.title || 'course'}.${normalizedFormat}`;
+            const header = response.headers.get('Content-Disposition') || '';
+            const matched = header.match(/filename\*=UTF-8''([^;]+)|filename=\"([^\"]+)\"|filename=([^;]+)/i);
+            const rawName = matched?.[1] || matched?.[2] || matched?.[3] || fallbackName;
+            const downloadName = decodeURIComponent(String(rawName).trim().replace(/^["']|["']$/g, ''));
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = downloadName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            alert('导出失败：网络错误');
+        }
+    };
+
     const handleRenameFolder = async (folderId, newName) => {
         // 前端验证：检查是否已存在同名文件夹（排除自己）
         const folderToRename = courseData.folders.find(f => f.id === folderId);
@@ -954,6 +1005,27 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                     )}
                     {contextMenu.type === 'course' && (
                         <>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExportCourse(contextMenu.item, 'pdf');
+                                    setContextMenu(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sky-300 hover:bg-slate-700 text-sm flex items-center"
+                            >
+                                <i className="fas fa-file-pdf w-5"></i>导出 PDF
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExportCourse(contextMenu.item, 'lume');
+                                    setContextMenu(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-indigo-300 hover:bg-slate-700 text-sm flex items-center"
+                            >
+                                <i className="fas fa-file-code w-5"></i>导出 .lume
+                            </button>
+                            <div className="my-1 border-t border-slate-700"></div>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();

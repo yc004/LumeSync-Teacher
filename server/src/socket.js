@@ -4,8 +4,8 @@
 
 const { config } = require('./config');
 const { getStudentFromClassroomLayout } = require('./submissions');
-const { resolveCorePackagePath } = require('./core-paths');
-const { normalizeIp, verifyViewerSessionToken } = require(resolveCorePackagePath('runtime-control', 'identity'));
+const { loadCoreModule } = require('./core-paths');
+const { normalizeIp, verifyViewerSessionToken } = loadCoreModule('identity');
 
 const HOST_TOKEN = String(process.env.LUMESYNC_HOST_TOKEN || '');
 const VIEWER_TOKEN_SECRET = String(process.env.LUMESYNC_VIEWER_TOKEN_SECRET || '');

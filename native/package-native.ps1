@@ -19,8 +19,11 @@ $SharedPublicDir = Join-Path $RepoRoot "shared/public"
 $SharedTeacherShellDir = Join-Path $RepoRoot "shared/teacher-shell"
 $SharedBuildDir = Join-Path $RepoRoot "shared/build"
 $SharedAssetsDir = Join-Path $RepoRoot "shared/assets"
-$CoreDir = if ($env:LUMESYNC_CORE_DIR) { Resolve-Path $env:LUMESYNC_CORE_DIR } else { Resolve-Path (Join-Path $RepoRoot "../core") }
-$CorePackagesDir = Join-Path $CoreDir "packages"
+$CoreDir = if ($env:LUMESYNC_CORE_DIR) { Resolve-Path $env:LUMESYNC_CORE_DIR } else { Resolve-Path (Join-Path $RepoRoot "core") }
+$CoreDistDir = Join-Path $CoreDir "dist"
+$CorePackageJsonPath = Join-Path $CoreDir "package.json"
+$CoreReadmePath = Join-Path $CoreDir "README.md"
+$CoreLicensePath = Join-Path $CoreDir "LICENSE"
 $PackageJsonPath = Join-Path $RepoRoot "package.json"
 $PackageLockPath = Join-Path $RepoRoot "package-lock.json"
 
@@ -92,11 +95,33 @@ function Prepare-RuntimeNodeModules {
   }
 }
 
+function Prepare-CoreDist {
+  if (-not (Test-Path $CorePackageJsonPath)) {
+    throw "Missing core package.json: $CorePackageJsonPath"
+  }
+
+  if (Test-Path $CoreDistDir) {
+    return
+  }
+
+  Push-Location $CoreDir
+  try {
+    pnpm run build | Out-Host
+  } finally {
+    Pop-Location
+  }
+
+  if (-not (Test-Path $CoreDistDir)) {
+    throw "Failed to build core SDK dist at $CoreDistDir"
+  }
+}
+
 if (-not (Test-Path $ShellExe)) {
   throw "Missing shell binary: $ShellExe"
 }
 
 Prepare-RuntimeNodeModules
+Prepare-CoreDist
 
 if (Test-Path $StagingRoot) {
   Remove-DirectoryWithRetry $StagingRoot
@@ -111,7 +136,10 @@ foreach ($entry in @(
   @{ From = $SharedTeacherShellDir; To = "shared/teacher-shell" },
   @{ From = $SharedBuildDir; To = "shared/build" },
   @{ From = $SharedAssetsDir; To = "shared/assets" },
-  @{ From = $CorePackagesDir; To = "core/packages" },
+  @{ From = $CoreDistDir; To = "core/dist" },
+  @{ From = $CorePackageJsonPath; To = "core/package.json" },
+  @{ From = $CoreReadmePath; To = "core/README.md" },
+  @{ From = $CoreLicensePath; To = "core/LICENSE" },
   @{ From = $RuntimeNodeModulesDir; To = "node_modules" }
 )) {
   if (Test-Path $entry.From) {

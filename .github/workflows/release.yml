@@ -27,6 +27,11 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
       - name: Configure core path
         shell: pwsh
         run: |
@@ -68,6 +73,18 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: npm run package:teacher-native-installer
+
+      - name: Verify modern installer output
+        shell: pwsh
+        run: |
+          $finalInstaller = Get-ChildItem "dist\installer\LumeSync Teacher Native Setup*.exe"
+          if ($finalInstaller.Count -ne 1) {
+            throw "Expected exactly one final installer in dist\\installer, found $($finalInstaller.Count)."
+          }
+          if (-not (Test-Path "dist\installer\bootstrapper-publish\LumeSyncTeacherInstaller.exe")) {
+            throw "Missing modern bootstrapper publish output."
+          }
+          Write-Host "Final installer: $($finalInstaller[0].FullName)"
 
       - name: Prepare release metadata
         id: meta

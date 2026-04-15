@@ -27,6 +27,13 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Setup pnpm
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.0 --activate
+          pnpm --version
+
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
@@ -40,7 +47,9 @@ jobs:
 
       - name: Install Node dependencies
         shell: pwsh
-        run: npm install
+        run: |
+          npm install
+          pnpm --dir core install --no-frozen-lockfile
 
       - name: Install native build tools
         shell: pwsh

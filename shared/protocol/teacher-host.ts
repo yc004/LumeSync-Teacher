@@ -50,6 +50,7 @@ export interface TeacherHostApi {
   saveSettings(settings: Partial<TeacherWindowSettings>): Promise<boolean>;
   importCourse(): Promise<{ success: boolean; imported?: string[]; skipped?: string[]; canceled?: boolean } | null>;
   exportCourse(payload?: { courseFile?: string; format?: 'pdf' | 'lume'; title?: string }): Promise<{ success: boolean; filePath?: string; filename?: string; canceled?: boolean; error?: string } | null>;
+  saveGeneratedPdf(payload?: { title?: string; filename?: string; dataBase64?: string }): Promise<{ success: boolean; filePath?: string; filename?: string; canceled?: boolean; error?: string } | null>;
   openLogDir(): Promise<string | null>;
   getLogDir(): Promise<string | null>;
   selectSubmissionDir(): Promise<string | null>;

@@ -1,14 +1,19 @@
 #include <windows.h>
 #include <commdlg.h>
+#include <iphlpapi.h>
 #include <shellapi.h>
 #include <tlhelp32.h>
 #include <winhttp.h>
+#include <wincrypt.h>
+#pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "comdlg32.lib")
+#pragma comment(lib, "crypt32.lib")
 
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <optional>
 #include <random>
 #include <sstream>
@@ -560,6 +565,7 @@ std::wstring HostApiScript() {
     saveSettings: (settings) => rpc('saveSettings', settings || {}),
     importCourse: () => rpc('importCourse'),
     exportCourse: (payload) => rpc('exportCourse', payload || {}),
+    saveGeneratedPdf: (payload) => rpc('saveGeneratedPdf', payload || {}),
     openLogDir: () => rpc('openLogDir'),
     getLogDir: () => rpc('getLogDir'),
     selectSubmissionDir: () => rpc('selectSubmissionDir'),
@@ -631,7 +637,11 @@ class TeacherShellApp {
 
  public:
   explicit TeacherShellApp(HINSTANCE instance, const StartupWindowOptions& startupOptions)
-      : instance_(instance), config_(lumesync::LoadConfig()), settings_(lumesync::LoadWindowSettings()), startupOptions_(startupOptions) {
+      : instance_(instance),
+        config_(lumesync::LoadConfig()),
+        settings_(lumesync::LoadWindowSettings()),
+        startupOptions_(startupOptions),
+        taskbarCreatedMessage_(RegisterWindowMessageW(L"TaskbarCreated")) {
     g_app = this;
   }
 
@@ -704,6 +714,12 @@ class TeacherShellApp {
   }
 
   LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
+    if (taskbarCreatedMessage_ != 0 && message == taskbarCreatedMessage_) {
+      trayIconAdded_ = false;
+      InitializeTrayIcon();
+      return 0;
+    }
+
     switch (message) {
       case WM_CREATE:
         InitializeTrayIcon();
@@ -835,10 +851,97 @@ class TeacherShellApp {
   }
 
   void StopLocalServerProcess() {
-    if (!serverProcess_.running()) return;
-    TerminateProcess(serverProcess_.process.hProcess, 0);
-    WaitForSingleObject(serverProcess_.process.hProcess, 3000);
-    serverProcess_.CloseHandles();
+    if (serverProcess_.running()) {
+      TerminateProcess(serverProcess_.process.hProcess, 0);
+      WaitForSingleObject(serverProcess_.process.hProcess, 3000);
+      serverProcess_.CloseHandles();
+    }
+    StopPidFileServerProcess();
+    StopListeningServerProcess();
+  }
+
+  std::filesystem::path ServerPidFilePath() const {
+    return lumesync::ProgramDataDir() / L"data" / L"teacher-server.pid";
+  }
+
+  bool IsNodeProcess(DWORD processId) const {
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return false;
+
+    PROCESSENTRY32W entry = {};
+    entry.dwSize = sizeof(entry);
+    bool matched = false;
+    if (Process32FirstW(snapshot, &entry)) {
+      do {
+        if (entry.th32ProcessID == processId) {
+          matched = (_wcsicmp(entry.szExeFile, L"node.exe") == 0);
+          break;
+        }
+      } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    return matched;
+  }
+
+  void StopPidFileServerProcess() {
+    const auto pidFile = ServerPidFilePath();
+    std::error_code error;
+    if (!std::filesystem::exists(pidFile, error)) return;
+
+    DWORD processId = 0;
+    {
+      std::wifstream input(pidFile);
+      input >> processId;
+    }
+
+    const DWORD currentPid = GetCurrentProcessId();
+    if (processId != 0 && processId != currentPid && IsNodeProcess(processId)) {
+      HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, processId);
+      if (process) {
+        lumesync::AppendLog(L"shell", L"Terminating teacher server pid from pid file: " + std::to_wstring(processId));
+        TerminateProcess(process, 0);
+        WaitForSingleObject(process, 3000);
+        CloseHandle(process);
+      }
+    }
+
+    std::filesystem::remove(pidFile, error);
+  }
+
+  static USHORT NetworkPortToHost(DWORD port) {
+    return static_cast<USHORT>(((port & 0xff) << 8) | ((port >> 8) & 0xff));
+  }
+
+  std::optional<DWORD> FindTcp4ListenerPidOnPort(int port) const {
+    DWORD tableSize = 0;
+    DWORD result = GetExtendedTcpTable(nullptr, &tableSize, FALSE, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0);
+    if (result != ERROR_INSUFFICIENT_BUFFER || tableSize == 0) return std::nullopt;
+
+    std::vector<unsigned char> buffer(tableSize);
+    auto* table = reinterpret_cast<PMIB_TCPTABLE_OWNER_PID>(buffer.data());
+    result = GetExtendedTcpTable(table, &tableSize, FALSE, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0);
+    if (result != NO_ERROR) return std::nullopt;
+
+    for (DWORD index = 0; index < table->dwNumEntries; ++index) {
+      const auto& row = table->table[index];
+      if (NetworkPortToHost(row.dwLocalPort) == static_cast<USHORT>(port)) {
+        return row.dwOwningPid;
+      }
+    }
+    return std::nullopt;
+  }
+
+  void StopListeningServerProcess() {
+    const int port = config_.port;
+    std::optional<DWORD> processId = FindTcp4ListenerPidOnPort(port);
+    if (!processId || *processId == 0 || *processId == GetCurrentProcessId() || !IsNodeProcess(*processId)) return;
+
+    HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, *processId);
+    if (!process) return;
+    lumesync::AppendLog(L"shell", L"Terminating teacher server pid listening on port " + std::to_wstring(port) + L": " + std::to_wstring(*processId));
+    TerminateProcess(process, 0);
+    WaitForSingleObject(process, 3000);
+    CloseHandle(process);
   }
 
   bool WaitForLocalServer(DWORD timeoutMs) {
@@ -876,6 +979,7 @@ class TeacherShellApp {
   bool StartLocalServerIfNeeded() {
     config_ = lumesync::LoadConfig();
     if (WaitForLocalServer(200)) return true;
+    if (startupOptions_.childWindow) return WaitForLocalServer(3000);
     if (serverProcess_.running()) return WaitForLocalServer(8000);
 
     const auto serverEntry = FindTeacherServerEntry();
@@ -912,6 +1016,7 @@ class TeacherShellApp {
     appendEnv(L"LUMESYNC_SUBMISSIONS_CONFIG", (runtimeRoot / L"submissions-config.json").wstring());
     appendEnv(L"LUMESYNC_FOLDER_DATA_PATH", (runtimeRoot / L"data" / L"course-folders.json").wstring());
     appendEnv(L"LUMESYNC_CLASSROOM_LAYOUT_PATH", (runtimeRoot / L"data" / L"classroom-layout-v1.json").wstring());
+    appendEnv(L"LUMESYNC_SERVER_PID_FILE", ServerPidFilePath().wstring());
     if (nodeModulesDir) appendEnv(L"NODE_PATH", nodeModulesDir->wstring());
     if (sharedPublicDir) {
       appendEnv(L"STATIC_DIR", sharedPublicDir->wstring());
@@ -1067,7 +1172,9 @@ class TeacherShellApp {
       webviewLoader_ = nullptr;
     }
 #endif
-    StopLocalServerProcess();
+    if (!startupOptions_.childWindow) {
+      StopLocalServerProcess();
+    }
   }
 
   void HandleWebMessage(const std::wstring& json) {
@@ -1298,6 +1405,83 @@ class TeacherShellApp {
     return true;
   }
 
+  bool DecodeBase64Payload(const std::wstring& base64, std::vector<unsigned char>* bytes) {
+    if (!bytes) return false;
+    bytes->clear();
+    if (base64.empty()) return false;
+
+    std::string narrow;
+    narrow.reserve(base64.size());
+    for (wchar_t ch : base64) {
+      if (ch > 0x7f) return false;
+      narrow.push_back(static_cast<char>(ch));
+    }
+
+    DWORD required = 0;
+    if (!CryptStringToBinaryA(narrow.c_str(), static_cast<DWORD>(narrow.size()), CRYPT_STRING_BASE64, nullptr, &required, nullptr, nullptr)) {
+      return false;
+    }
+    bytes->resize(required);
+    return CryptStringToBinaryA(narrow.c_str(), static_cast<DWORD>(narrow.size()), CRYPT_STRING_BASE64, bytes->data(), &required, nullptr, nullptr) == TRUE;
+  }
+
+  bool SaveGeneratedPdfFromPayload(const std::wstring& payload, std::wstring* resultJson, std::wstring* errorMessage) {
+    const std::wstring title = lumesync::JsonStringField(payload, L"title").value_or(L"");
+    std::wstring fileName = lumesync::JsonStringField(payload, L"filename").value_or(L"");
+    const std::wstring dataBase64 = lumesync::JsonStringField(payload, L"dataBase64").value_or(L"");
+
+    if (dataBase64.empty()) {
+      if (errorMessage) *errorMessage = L"dataBase64 is required";
+      return false;
+    }
+
+    if (fileName.empty()) {
+      fileName = (title.empty() ? L"course" : title) + L".pdf";
+    }
+    if (!std::filesystem::path(fileName).has_extension()) {
+      fileName += L".pdf";
+    }
+
+    bool canceled = false;
+    const auto targetPath = ShowSaveCourseDialog(fileName, L"pdf", &canceled);
+    if (!targetPath) {
+      if (canceled) {
+        if (resultJson) *resultJson = L"{\"success\":false,\"canceled\":true}";
+        return true;
+      }
+      if (errorMessage) *errorMessage = L"save dialog failed";
+      return false;
+    }
+
+    std::vector<unsigned char> pdfBytes;
+    if (!DecodeBase64Payload(dataBase64, &pdfBytes)) {
+      if (errorMessage) *errorMessage = L"failed to decode pdf data";
+      return false;
+    }
+
+    std::error_code dirError;
+    std::filesystem::create_directories(targetPath->parent_path(), dirError);
+
+    std::ofstream output(*targetPath, std::ios::binary | std::ios::trunc);
+    if (!output.is_open()) {
+      if (errorMessage) *errorMessage = L"failed to open target file";
+      return false;
+    }
+    output.write(reinterpret_cast<const char*>(pdfBytes.data()), static_cast<std::streamsize>(pdfBytes.size()));
+    output.close();
+    if (!output) {
+      if (errorMessage) *errorMessage = L"failed to save file";
+      return false;
+    }
+
+    const std::wstring savedFileName = targetPath->filename().wstring();
+    if (resultJson) {
+      *resultJson = L"{\"success\":true,\"filePath\":\"" + lumesync::JsonEscape(targetPath->wstring()) +
+                    L"\",\"filename\":\"" + lumesync::JsonEscape(savedFileName) + L"\"}";
+    }
+    return true;
+  }
+
   void HandleRpc(const std::wstring& id, const std::wstring& action, const std::wstring& payload) {
     if (action == L"getConfig") {
       config_ = lumesync::LoadConfig();
@@ -1354,6 +1538,11 @@ class TeacherShellApp {
       std::wstring responsePayload = L"null";
       std::wstring error;
       const bool ok = ExportCourseFromPayload(payload, &responsePayload, &error);
+      SendRpcResult(id, ok, responsePayload, ok ? L"" : error);
+    } else if (action == L"saveGeneratedPdf") {
+      std::wstring responsePayload = L"null";
+      std::wstring error;
+      const bool ok = SaveGeneratedPdfFromPayload(payload, &responsePayload, &error);
       SendRpcResult(id, ok, responsePayload, ok ? L"" : error);
     } else if (action == L"selectSubmissionDir" || action == L"importCourse") {
       SendRpcResult(id, true, L"null");
@@ -1445,6 +1634,7 @@ class TeacherShellApp {
   StartupWindowOptions startupOptions_;
   NOTIFYICONDATAW trayIconData_ = {};
   bool trayIconAdded_ = false;
+  UINT taskbarCreatedMessage_ = 0;
 #if LUMESYNC_HAS_WEBVIEW2
   HMODULE webviewLoader_ = nullptr;
   ComPtr<ICoreWebView2Controller> webviewController_;

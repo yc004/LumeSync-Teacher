@@ -11,6 +11,7 @@ target_link_libraries(LumeSyncTeacherShell
     shell32
     ole32
     advapi32
+    iphlpapi
     winhttp
     comdlg32
 )

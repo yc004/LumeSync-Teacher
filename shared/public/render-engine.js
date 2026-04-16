@@ -3474,6 +3474,258 @@ const ensurePdfJsLoaded = async () => {
   } catch (_) {}
   return true;
 };
+const ensureJsZipLoaded = async () => {
+  if (window.JSZip && typeof window.JSZip.loadAsync === 'function') return true;
+  const ok = await loadScriptWithFallback('/lib/jszip.min.js', 'https://fastly.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+  return !!ok && !!window.JSZip && typeof window.JSZip.loadAsync === 'function';
+};
+const disposeLoadedLume = () => {
+  const urls = Array.isArray(window.__LumeSyncLoadedLumeObjectUrls) ? window.__LumeSyncLoadedLumeObjectUrls : [];
+  urls.forEach(url => {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (_) {}
+  });
+  window.__LumeSyncLoadedLumeObjectUrls = [];
+};
+const normalizeLumePath = value => String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
+const getLumeZipFile = (zip, filePath) => {
+  const normalized = normalizeLumePath(filePath);
+  return zip.file(normalized) || zip.file(normalized.replace(/\//g, '\\'));
+};
+const buildCourseFileUrl = filePath => {
+  const normalized = normalizeLumePath(filePath);
+  const encodedPath = normalized.split('/').filter(Boolean).map(segment => encodeURIComponent(segment)).join('/');
+  return `/courses/${encodedPath}`;
+};
+const getMimeFromPath = filePath => {
+  const ext = String(filePath || '').split('.').pop()?.toLowerCase();
+  const mimeMap = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml',
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    ogg: 'audio/ogg',
+    woff: 'font/woff',
+    woff2: 'font/woff2',
+    ttf: 'font/ttf',
+    otf: 'font/otf',
+    css: 'text/css'
+  };
+  return mimeMap[ext] || 'application/octet-stream';
+};
+const buildLumeAssetMap = async (zip, manifest) => {
+  const assetMap = new Map();
+  const objectUrls = [];
+  const explicitAssetPaths = Object.keys(manifest.assets || {});
+  const discoveredAssetPaths = Object.keys(zip.files || {}).filter(name => normalizeLumePath(name).startsWith('assets/') && !zip.files[name].dir);
+  const paths = Array.from(new Set([...explicitAssetPaths, ...discoveredAssetPaths].map(normalizeLumePath)));
+  for (const assetPath of paths) {
+    const file = getLumeZipFile(zip, assetPath);
+    if (!file) {
+      console.warn('[LumeZip] asset not found:', assetPath);
+      continue;
+    }
+    const blob = await file.async('blob');
+    const typedBlob = blob.type ? blob : new Blob([blob], {
+      type: getMimeFromPath(assetPath)
+    });
+    const url = URL.createObjectURL(typedBlob);
+    objectUrls.push(url);
+    assetMap.set(assetPath, url);
+    assetMap.set('/' + assetPath, url);
+  }
+  window.__LumeSyncLoadedLumeObjectUrls = objectUrls;
+  return assetMap;
+};
+const createLumeAssetResolver = assetMap => assetPath => {
+  const normalized = normalizeLumePath(assetPath);
+  const resolved = assetMap.get(assetPath) || assetMap.get(normalized) || assetMap.get('/' + normalized);
+  if (!resolved && normalized.startsWith('assets/')) {
+    console.warn('[LumeZip] unresolved asset path:', assetPath);
+  }
+  return resolved || assetPath;
+};
+const rewriteLumeAssetPaths = source => String(source || '').replace(/\b(src|href|poster)=["'](assets\/[^"']+)["']/g, (_match, attr, assetPath) => `${attr}={assetUrl("${assetPath}")}`);
+const executeCompiledLumeCode = (compiledCode, assetUrl, moduleFile) => {
+  const module = {
+    exports: {}
+  };
+  const exports = module.exports;
+  const require = name => {
+    if (name === 'react') return {
+      __esModule: true,
+      default: React,
+      ...React
+    };
+    if (name === 'react-dom') return {
+      __esModule: true,
+      default: ReactDOM,
+      ...ReactDOM
+    };
+    if (name === '@lumesync/course-sdk' || name === 'lumesync-course-sdk') return window.CourseGlobalContext || {};
+    throw new Error(`Unsupported import "${name}" in ${moduleFile}`);
+  };
+  new Function('React', 'ReactDOM', 'assetUrl', 'module', 'exports', 'require', compiledCode)(React, ReactDOM, assetUrl, module, exports, require);
+  return module.exports;
+};
+const compileLumeModule = (source, fileName, assetUrl, sourceType = 'module') => {
+  if (!window.Babel || typeof window.Babel.transform !== 'function') {
+    throw new Error('Babel runtime is required to compile TSX slides');
+  }
+  const compiledCode = window.Babel.transform(rewriteLumeAssetPaths(source), {
+    presets: ['react', 'typescript'],
+    plugins: sourceType === 'module' ? ['transform-modules-commonjs'] : [],
+    filename: fileName,
+    sourceType
+  }).code;
+  if (!compiledCode) throw new Error(`Failed to compile ${fileName}`);
+  return executeCompiledLumeCode(compiledCode, assetUrl, fileName);
+};
+const resolveSlideExport = (moduleExports, page) => {
+  const fileBaseName = normalizeLumePath(page.file).split('/').pop()?.replace(/\.[^.]+$/, '');
+  return moduleExports.default || (page.exportName ? moduleExports[page.exportName] : null) || (fileBaseName ? moduleExports[fileBaseName] : null);
+};
+const slideExportToElement = (slideExport, page) => {
+  if (React.isValidElement(slideExport)) return slideExport;
+  if (typeof slideExport === 'function') return React.createElement(slideExport, {
+    page
+  });
+  throw new Error(`Slide module did not export a React component: ${page.file}`);
+};
+const validateLumeManifest = manifest => {
+  if (!manifest || typeof manifest !== 'object') throw new Error('Invalid manifest.json');
+  if (manifest.runtime?.format !== 'lumesync-zip') throw new Error('Unsupported .lume manifest runtime format');
+  const entryMode = manifest.runtime?.entryMode || 'pages';
+  if (entryMode !== 'pages' && entryMode !== 'legacy-course-data') {
+    throw new Error(`Unsupported .lume entryMode: ${entryMode}`);
+  }
+  if (!Array.isArray(manifest.pages) || manifest.pages.length === 0) {
+    throw new Error('manifest.json must contain at least one page');
+  }
+  manifest.pages.forEach((page, idx) => {
+    if (!page?.file) throw new Error(`manifest.pages[${idx}].file is required`);
+  });
+  return entryMode;
+};
+const loadLumeZipCourse = async (course, options = {}) => {
+  const {
+    socket,
+    onProgress,
+    createContext = createCourseContext
+  } = options;
+  disposeLoadedLume();
+  setProgress(onProgress, {
+    currentStep: 'init-lume-zip',
+    currentFile: 'jszip',
+    progress: 5,
+    totalSteps: 5,
+    currentStepIndex: 1
+  });
+  const ok = await ensureJsZipLoaded();
+  if (!ok) throw new Error('JSZip failed to load');
+  const courseUrl = buildCourseFileUrl(course.file);
+  setProgress(onProgress, {
+    currentStep: 'fetch-lume-zip',
+    currentFile: course.file,
+    progress: 15,
+    totalSteps: 5,
+    currentStepIndex: 2
+  });
+  const response = await fetch(courseUrl);
+  if (!response.ok) throw new Error('Failed to fetch ' + courseUrl);
+  const buffer = await response.arrayBuffer();
+  const zip = await window.JSZip.loadAsync(buffer);
+  const manifestFile = zip.file('manifest.json');
+  if (!manifestFile) throw new Error('manifest.json not found in .lume package');
+  setProgress(onProgress, {
+    currentStep: 'parse-manifest',
+    currentFile: 'manifest.json',
+    progress: 30,
+    totalSteps: 5,
+    currentStepIndex: 3
+  });
+  const manifest = JSON.parse(await manifestFile.async('string'));
+  const entryMode = validateLumeManifest(manifest);
+  const assetMap = await buildLumeAssetMap(zip, manifest);
+  const assetUrl = createLumeAssetResolver(assetMap);
+  setProgress(onProgress, {
+    currentStep: 'compile-slides',
+    currentFile: 'slides',
+    progress: 55,
+    totalSteps: 5,
+    currentStepIndex: 4
+  });
+  if (entryMode === 'legacy-course-data') {
+    window.CourseData = null;
+    const legacyPage = manifest.pages[0];
+    const legacyFile = getLumeZipFile(zip, legacyPage.file);
+    if (!legacyFile) throw new Error(`Slide file not found: ${legacyPage.file}`);
+    const source = await legacyFile.async('string');
+    compileLumeModule(source, legacyPage.file, assetUrl, 'script');
+    if (!window.CourseData) throw new Error('Legacy CourseData was not registered by ' + legacyPage.file);
+    window.CourseGlobalContext = createContext({
+      socket
+    });
+    setProgress(onProgress, {
+      currentStep: 'done',
+      currentFile: '',
+      progress: 100,
+      totalSteps: 5,
+      currentStepIndex: 5
+    });
+    return {
+      ...window.CourseData,
+      id: window.CourseData.id || manifest.id || course.id,
+      title: window.CourseData.title || manifest.title || course.title || course.id,
+      icon: window.CourseData.icon || manifest.icon || course.icon,
+      desc: window.CourseData.desc || manifest.desc || course.desc,
+      color: window.CourseData.color || manifest.color || course.color
+    };
+  }
+  const slides = [];
+  for (const page of manifest.pages) {
+    const slidePath = normalizeLumePath(page.file);
+    const slideFile = getLumeZipFile(zip, slidePath);
+    if (!slideFile) throw new Error(`Slide file not found: ${page.file}`);
+    const source = await slideFile.async('string');
+    const moduleExports = compileLumeModule(source, slidePath, assetUrl, 'module');
+    const slideExport = resolveSlideExport(moduleExports, page);
+    slides.push({
+      id: page.id || slidePath,
+      title: page.title || page.id || slidePath,
+      transition: page.transition,
+      scrollable: page.scrollable === true,
+      component: slideExportToElement(slideExport, page)
+    });
+  }
+  window.CourseGlobalContext = createContext({
+    socket
+  });
+  const courseData = {
+    id: manifest.id || course.id,
+    title: manifest.title || course.title || course.id,
+    icon: manifest.icon || course.icon || 'Course',
+    desc: manifest.desc || manifest.description || course.desc || '',
+    color: manifest.color || course.color || 'from-blue-500 to-indigo-600',
+    slides
+  };
+  window.CourseData = courseData;
+  setProgress(onProgress, {
+    currentStep: 'done',
+    currentFile: '',
+    progress: 100,
+    totalSteps: 5,
+    currentStepIndex: 5
+  });
+  return courseData;
+};
 const getPdfDoc = pdfUrl => {
   if (!window.__LumeSyncPdfDocCache) window.__LumeSyncPdfDocCache = new Map();
   const cache = window.__LumeSyncPdfDocCache;
@@ -3590,6 +3842,32 @@ const createCourseContext = ({
     });
   }
 });
+const createExportCourseContext = ({
+  courseId = '',
+  slideIndex = 0
+} = {}) => ({
+  canvas: null,
+  getCamera: async () => {
+    throw new Error('Camera is unavailable during export preview');
+  },
+  releaseCamera: () => {},
+  unregisterCamera: () => {},
+  syncInteraction: () => {},
+  getSocket: () => null,
+  getCurrentCourseMeta: () => ({
+    courseId,
+    slideIndex
+  }),
+  setVoteToolbarState: () => {},
+  clearVoteToolbarState: () => {},
+  useSyncVar: (_key, initialValue) => [initialValue, () => {}],
+  useLocalVar: (_key, initialValue) => [initialValue, () => {}],
+  getStudentInfo: () => null,
+  submitContent: async () => ({
+    success: false,
+    error: 'Export preview mode does not accept submissions'
+  })
+});
 const loadCourse = async (course, options = {}) => {
   const {
     socket,
@@ -3598,7 +3876,14 @@ const loadCourse = async (course, options = {}) => {
   } = options;
   if (!course || !course.file) throw new Error('Missing course file');
   const courseFileLower = String(course.file || '').toLowerCase();
+  if (course.type === 'legacy-script') {
+    throw new Error('This legacy single-file .lume must be migrated to the Zip manifest format before playback.');
+  }
+  if (courseFileLower.endsWith('.lume')) {
+    return loadLumeZipCourse(course, options);
+  }
   if (courseFileLower.endsWith('.pdf')) {
+    disposeLoadedLume();
     setProgress(onProgress, {
       currentStep: 'init-pdf',
       currentFile: 'pdf.js',
@@ -3608,7 +3893,7 @@ const loadCourse = async (course, options = {}) => {
     });
     const ok = await ensurePdfJsLoaded();
     if (!ok) throw new Error('PDF renderer failed to load');
-    const pdfUrl = '/courses/' + course.file;
+    const pdfUrl = buildCourseFileUrl(course.file);
     setProgress(onProgress, {
       currentStep: 'parse-pdf',
       currentFile: course.file,
@@ -3646,6 +3931,7 @@ const loadCourse = async (course, options = {}) => {
       slides
     };
   }
+  disposeLoadedLume();
   window.CourseData = null;
   setProgress(onProgress, {
     currentStep: 'fetch-course',
@@ -3654,7 +3940,7 @@ const loadCourse = async (course, options = {}) => {
     totalSteps: 3,
     currentStepIndex: 1
   });
-  const scriptUrl = '/courses/' + course.file;
+  const scriptUrl = buildCourseFileUrl(course.file);
   const response = await fetch(scriptUrl);
   if (!response.ok) throw new Error('Failed to fetch ' + scriptUrl);
   const scriptContent = await response.text();
@@ -3750,21 +4036,72 @@ function CourseStage(props) {
     hideBottomBar: hideBottomBar
   }));
 }
+function CourseExportDocument({
+  course,
+  courseData,
+  contentScale = 1
+}) {
+  const slides = Array.isArray(courseData?.slides) ? courseData.slides : [];
+  const normalizedContentScale = Math.min(Math.max(Number(contentScale) || 1, 0.5), 1.5);
+  const exportContentStyle = {
+    width: `${100 / normalizedContentScale}%`,
+    height: `${100 / normalizedContentScale}%`,
+    transform: `scale(${normalizedContentScale})`,
+    transformOrigin: 'center center'
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "min-h-screen bg-slate-200 px-6 py-8 text-slate-900 print:bg-white print:px-0 print:py-0"
+  }, /*#__PURE__*/React.createElement("style", null, `
+                .lumesync-export-document .text-transparent.bg-clip-text,
+                .lumesync-export-document .bg-clip-text.text-transparent {
+                    background-image: none !important;
+                    -webkit-background-clip: border-box !important;
+                    background-clip: border-box !important;
+                    -webkit-text-fill-color: #2563eb !important;
+                    color: #2563eb !important;
+                    text-shadow: none !important;
+                }
+            `), slides.map((slide, index) => /*#__PURE__*/React.createElement("section", {
+    key: slide?.id || `slide-${index + 1}`,
+    className: "lumesync-export-document mx-auto mb-8 flex w-full max-w-[1920px] justify-center break-after-page print:mb-0 print:max-w-none",
+    "data-export-page": `slide-${index + 1}`
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex w-full overflow-hidden rounded-[32px] border border-slate-300 bg-white shadow-[0_32px_120px_rgba(15,23,42,0.18)] print:rounded-none print:border-0 print:shadow-none",
+    style: {
+      aspectRatio: '16 / 9'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex h-full w-full items-center justify-center overflow-hidden bg-white"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: exportContentStyle
+  }, slide?.component || /*#__PURE__*/React.createElement("div", {
+    className: "flex h-full items-center justify-center text-slate-400"
+  }, "This slide is empty.")))))));
+}
 const renderCourseStage = (rootElement, props) => {
   if (!rootElement) throw new Error('Missing rootElement');
   const root = ReactDOM.createRoot(rootElement);
   root.render(/*#__PURE__*/React.createElement(CourseStage, props));
   return root;
 };
+const renderCourseExportDocument = (rootElement, props) => {
+  if (!rootElement) throw new Error('Missing rootElement');
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(/*#__PURE__*/React.createElement(CourseExportDocument, props));
+  return root;
+};
 window.LumeSyncRenderEngine = {
   ...(window.LumeSyncRenderEngine || {}),
   CourseErrorBoundary,
+  CourseExportDocument,
   CourseStage,
   PdfPageSlide,
   WebPageSlide,
   createCourseContext,
+  createExportCourseContext,
   getPdfDoc,
   loadCourse,
+  renderCourseExportDocument,
   renderCourseStage
 };
 console.log('[LumeSync RenderEngine] runtime API loaded');

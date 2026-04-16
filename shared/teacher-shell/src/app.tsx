@@ -210,6 +210,7 @@ const ensureTeacherShellStyles = () => {
 window.__LumeSyncStartWindowDrag = (event) => {
     if (!event || event.button !== 0) return;
     if (event.target?.closest?.('[data-window-control="true"]')) return;
+    if (event.target?.closest?.('button, a, input, textarea, select, label, summary, [role="button"], [data-no-window-drag="true"]')) return;
     if (!window.electronAPI?.beginWindowDrag) return;
 
     window.electronAPI.beginWindowDrag({ screenX: event.screenX, screenY: event.screenY });

@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
 
 if (!process.env.LUMESYNC_HOST_TOKEN) {
     process.env.LUMESYNC_HOST_TOKEN = `teacher-host-${crypto.randomBytes(24).toString('hex')}`;
@@ -42,6 +43,32 @@ const VIEWER_TOKEN_TTL_SEC = Number(process.env.LUMESYNC_VIEWER_TOKEN_TTL_SEC ||
 const VIEWER_TOKEN_SECRET = String(process.env.LUMESYNC_VIEWER_TOKEN_SECRET || '');
 const HOST_TOKEN = String(process.env.LUMESYNC_HOST_TOKEN || '');
 const HOST_TOKEN_TTL_SEC = Number(process.env.LUMESYNC_HOST_TOKEN_TTL_SEC || 14400);
+
+const SERVER_PID_FILE = String(process.env.LUMESYNC_SERVER_PID_FILE || '').trim();
+
+function writeServerPidFile() {
+    if (!SERVER_PID_FILE) return;
+    try {
+        fs.mkdirSync(path.dirname(SERVER_PID_FILE), { recursive: true });
+        fs.writeFileSync(SERVER_PID_FILE, String(process.pid), 'utf8');
+    } catch (err) {
+        console.warn('[teacher-server] failed to write pid file:', err.message);
+    }
+}
+
+function removeServerPidFile() {
+    if (!SERVER_PID_FILE) return;
+    try {
+        const pid = fs.existsSync(SERVER_PID_FILE)
+            ? fs.readFileSync(SERVER_PID_FILE, 'utf8').trim()
+            : '';
+        if (pid === String(process.pid)) {
+            fs.unlinkSync(SERVER_PID_FILE);
+        }
+    } catch (err) {
+        console.warn('[teacher-server] failed to remove pid file:', err.message);
+    }
+}
 
 function ensureClientId(input) {
     const value = String(input || '').trim();
@@ -194,16 +221,25 @@ runtime.setupSocketHandlers(io, {
 function startServer(port) {
     const PORT = port || config.port;
     server.listen(PORT, () => {
+        writeServerPidFile();
         console.log(`[teacher-server] running on port ${PORT}`);
         console.log(`[teacher-server] static root: ${staticDir}`);
     });
 
+    process.on('exit', removeServerPidFile);
+
     process.on('SIGTERM', () => {
-        server.close(() => process.exit(0));
+        server.close(() => {
+            removeServerPidFile();
+            process.exit(0);
+        });
     });
 
     process.on('SIGINT', () => {
-        server.close(() => process.exit(0));
+        server.close(() => {
+            removeServerPidFile();
+            process.exit(0);
+        });
     });
 
     return server;

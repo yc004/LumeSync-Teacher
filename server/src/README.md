@@ -123,3 +123,14 @@ server/
 2. **路径安全**: 防止路径遍历攻击
 3. **速率限制**: 考虑添加速率限制中间件
 4. **HTTPS**: 生产环境使用 HTTPS
+
+## Native Shell 进程协作
+
+教师端原生 shell 负责启动和关闭本地 Node 服务。服务端配合以下约定，避免教师端窗口关闭后遗留 `node.exe`：
+
+1. shell 启动 `server/index.js` 时会注入 `LUMESYNC_SERVER_PID_FILE`。
+2. `server/index.js` 在 `server.listen()` 成功后写入当前 `process.pid`。
+3. 服务收到 `SIGTERM` / `SIGINT` 或正常退出时，会删除仍指向自身 PID 的文件。
+4. `/api/health` 会返回 `pid`，便于 shell 或调试工具确认当前服务进程。
+
+PID 文件只用于教师端本地运行时生命周期管理，不应作为业务状态存储。

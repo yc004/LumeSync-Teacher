@@ -2242,6 +2242,13 @@ function CourseSelector({
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverFolder, setDragOverFolder] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState(new Set());
+  const [exportPreview, setExportPreview] = useState(null);
+  const previewFrameRef = useRef(null);
+  const exportPreviewRef = useRef(null);
+  const exportScaleInputId = 'course-export-scale-range';
+  useEffect(() => {
+    exportPreviewRef.current = exportPreview;
+  }, [exportPreview]);
   useEffect(() => {
     let disposed = false;
     const next = normalizeCourseCatalog(courses);
@@ -2255,6 +2262,94 @@ function CourseSelector({
       disposed = true;
     };
   }, [courses]);
+  useEffect(() => {
+    if (!exportPreview) return;
+    const handleMessage = event => {
+      if (String(event.data?.courseId ?? '') !== String(exportPreview.course?.id ?? '')) return;
+      if (event.data?.kind === 'lumesync-export-preview-progress') {
+        setExportPreview(prev => prev ? {
+          ...prev,
+          status: event.data?.status || prev.status,
+          error: '',
+          progress: Math.min(Math.max(Number(event.data?.progress) || 0, 0), 100),
+          progressLabel: event.data?.label || prev.progressLabel,
+          contentScale: Number(event.data?.contentScale) || prev.contentScale
+        } : prev);
+      } else if (event.data?.kind === 'lumesync-export-preview-ready') {
+        setExportPreview(prev => prev ? {
+          ...prev,
+          status: 'ready',
+          error: '',
+          progress: 100,
+          progressLabel: 'Preview ready',
+          contentScale: Number(event.data?.contentScale) || prev.contentScale
+        } : prev);
+      } else if (event.data?.kind === 'lumesync-export-preview-scale-applied') {
+        setExportPreview(prev => prev ? {
+          ...prev,
+          status: 'ready',
+          error: '',
+          progress: 100,
+          progressLabel: 'Scale updated',
+          contentScale: Number(event.data?.contentScale) || prev.contentScale
+        } : prev);
+      } else if (event.data?.kind === 'lumesync-export-preview-generating') {
+        setExportPreview(prev => prev ? {
+          ...prev,
+          status: 'generating',
+          error: '',
+          progress: Math.max(prev.progress || 0, 0),
+          progressLabel: 'Generating PDF',
+          contentScale: Number(event.data?.contentScale) || prev.contentScale
+        } : prev);
+      } else if (event.data?.kind === 'lumesync-export-preview-generated') {
+        setExportPreview(null);
+      } else if (event.data?.kind === 'lumesync-export-preview-error') {
+        setExportPreview(prev => prev ? {
+          ...prev,
+          status: 'error',
+          error: event.data?.error || 'Preview failed'
+        } : prev);
+      } else if (event.data?.kind === 'lumesync-export-preview-afterprint') {
+        setExportPreview(null);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [exportPreview]);
+  useEffect(() => {
+    if (!exportPreview) return;
+    const syncFromFrame = () => {
+      try {
+        const frameState = previewFrameRef.current?.contentWindow?.__lumesyncExportPreviewState;
+        if (!frameState) return;
+        if (String(frameState.courseId ?? '') !== String(exportPreviewRef.current?.course?.id ?? '')) return;
+        setExportPreview(prev => {
+          if (!prev) return prev;
+          if (frameState.status === 'generated') return null;
+          if (frameState.status === 'error') {
+            return {
+              ...prev,
+              status: 'error',
+              error: frameState.error || frameState.label || prev.error,
+              progressLabel: frameState.label || prev.progressLabel
+            };
+          }
+          return {
+            ...prev,
+            status: frameState.status || prev.status,
+            error: '',
+            progress: Math.min(Math.max(Number(frameState.progress) || 0, 0), 100),
+            progressLabel: frameState.label || prev.progressLabel,
+            contentScale: Number(frameState.contentScale) || prev.contentScale
+          };
+        });
+      } catch (_) {}
+    };
+    syncFromFrame();
+    const timer = window.setInterval(syncFromFrame, 200);
+    return () => window.clearInterval(timer);
+  }, [exportPreview?.course?.id]);
   const handleSelect = courseId => {
     setSelectedId(courseId);
   };
@@ -2324,6 +2419,19 @@ function CourseSelector({
     if (!course?.id) return;
     const normalizedFormat = String(format || '').toLowerCase();
     if (normalizedFormat !== 'pdf' && normalizedFormat !== 'lume') return;
+    if (normalizedFormat === 'pdf') {
+      const initialScale = 1;
+      setExportPreview({
+        course,
+        status: 'loading',
+        error: '',
+        progress: 5,
+        progressLabel: 'Initializing preview',
+        contentScale: initialScale,
+        previewUrl: `/export-preview.html?courseId=${encodeURIComponent(course.id)}&title=${encodeURIComponent(course.title || course.id || 'course')}&scale=${initialScale}&t=${Date.now()}`
+      });
+      return;
+    }
     try {
       if (window.electronAPI?.exportCourse) {
         const nativeResult = await window.electronAPI.exportCourse({
@@ -2339,12 +2447,12 @@ function CourseSelector({
       }
       const response = await fetch(`/api/export-course/${encodeURIComponent(course.id)}?format=${encodeURIComponent(normalizedFormat)}`);
       if (!response.ok) {
-        let errMsg = '导出失败';
+        let errMsg = 'Export failed';
         try {
           const payload = await response.json();
           if (payload?.error) errMsg = payload.error;
         } catch (_) {}
-        alert(`导出失败：${errMsg}`);
+        alert(`Export failed: ${errMsg}`);
         return;
       }
       const blob = await response.blob();
@@ -2362,8 +2470,34 @@ function CourseSelector({
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert('导出失败：网络错误');
+      alert('Export failed: network error');
     }
+  };
+  const handleConfirmPdfExport = () => {
+    if (!previewFrameRef.current?.contentWindow || exportPreview?.status !== 'ready') return;
+    previewFrameRef.current.contentWindow.postMessage({
+      kind: 'lumesync-export-preview-print'
+    }, '*');
+  };
+  const handleExportScaleChange = nextValue => {
+    const nextScale = Math.min(Math.max(Number(nextValue) || 1, 0.5), 1.5);
+    setExportPreview(prev => prev ? {
+      ...prev,
+      contentScale: nextScale
+    } : prev);
+    if (previewFrameRef.current?.contentWindow) {
+      previewFrameRef.current.contentWindow.postMessage({
+        kind: 'lumesync-export-preview-set-scale',
+        contentScale: nextScale
+      }, '*');
+    }
+  };
+  const handleExportPreviewFrameLoad = () => {
+    if (!previewFrameRef.current?.contentWindow || !exportPreviewRef.current?.course) return;
+    previewFrameRef.current.contentWindow.postMessage({
+      kind: 'lumesync-export-preview-parent-ready',
+      courseId: String(exportPreviewRef.current.course.id ?? '')
+    }, '*');
   };
   const handleRenameFolder = async (folderId, newName) => {
     // 前端验证：检查是否已存在同名文件夹（排除自己）
@@ -3036,7 +3170,7 @@ function CourseSelector({
     className: "w-full px-4 py-2 text-left text-sky-300 hover:bg-slate-700 text-sm flex items-center"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-file-pdf w-5"
-  }), "\u5BFC\u51FA PDF"), /*#__PURE__*/React.createElement("button", {
+  }), "Export PDF"), /*#__PURE__*/React.createElement("button", {
     onClick: e => {
       e.stopPropagation();
       handleExportCourse(contextMenu.item, 'lume');
@@ -3045,7 +3179,7 @@ function CourseSelector({
     className: "w-full px-4 py-2 text-left text-indigo-300 hover:bg-slate-700 text-sm flex items-center"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-file-code w-5"
-  }), "\u5BFC\u51FA .lume"), /*#__PURE__*/React.createElement("div", {
+  }), "Export .lume"), /*#__PURE__*/React.createElement("div", {
     className: "my-1 border-t border-slate-700"
   }), /*#__PURE__*/React.createElement("button", {
     onClick: e => {
@@ -3057,7 +3191,7 @@ function CourseSelector({
     className: "w-full px-4 py-2 text-left text-green-400 hover:bg-slate-700 text-sm flex items-center"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-folder-open w-5"
-  }), "\u67E5\u770B\u5B66\u751F\u63D0\u4EA4"), /*#__PURE__*/React.createElement("button", {
+  }), "View submissions"), /*#__PURE__*/React.createElement("button", {
     onClick: e => {
       e.stopPropagation();
       handleDeleteCourse(contextMenu.item.id);
@@ -3066,7 +3200,7 @@ function CourseSelector({
     className: "w-full px-4 py-2 text-left text-red-400 hover:bg-slate-700 text-sm flex items-center"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-trash w-5"
-  }), "\u5220\u9664"))), showRenameDialog && /*#__PURE__*/React.createElement("div", {
+  }), "Delete"))), showRenameDialog && /*#__PURE__*/React.createElement("div", {
     className: `fixed inset-0 ${window.__getTeacherLayerClass?.('modal') || 'z-[10020]'} bg-black/50 flex items-center justify-center`,
     onClick: () => setShowRenameDialog(false)
   }, /*#__PURE__*/React.createElement("div", {
@@ -3074,11 +3208,11 @@ function CourseSelector({
     onClick: e => e.stopPropagation()
   }, /*#__PURE__*/React.createElement("h3", {
     className: "text-white font-bold text-lg mb-4"
-  }, "\u91CD\u547D\u540D"), /*#__PURE__*/React.createElement("input", {
+  }, "Rename"), /*#__PURE__*/React.createElement("input", {
     type: "text",
     value: renameValue,
     onChange: e => setRenameValue(e.target.value),
-    placeholder: "\u8F93\u5165\u65B0\u540D\u79F0",
+    placeholder: "Enter a new name",
     className: "w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 outline-none focus:border-blue-400 mb-4",
     autoFocus: true,
     onKeyDown: e => {
@@ -3092,10 +3226,10 @@ function CourseSelector({
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowRenameDialog(false),
     className: "px-4 py-2 teacher-liquid-button rounded-lg text-sm transition-colors"
-  }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement("button", {
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
     onClick: handleRename,
     className: "px-4 py-2 teacher-liquid-primary rounded-lg text-sm font-medium transition-colors"
-  }, "\u786E\u5B9A")))), showSettings && /*#__PURE__*/React.createElement(SettingsPanel, {
+  }, "Confirm")))), showSettings && /*#__PURE__*/React.createElement(SettingsPanel, {
     settings: settings,
     onSettingsChange: onSettingsChange,
     socket: socket,
@@ -3113,14 +3247,14 @@ function CourseSelector({
     className: "text-white font-bold text-lg flex items-center"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-book-open mr-2 text-green-400"
-  }), "\u8BFE\u4EF6\u5F00\u53D1\u6559\u7A0B"), /*#__PURE__*/React.createElement("div", {
+  }), "Course guide"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-2 text-slate-100"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: handleDownloadSkill,
     className: "flex items-center px-3 py-1.5 teacher-liquid-primary rounded-lg text-sm font-medium transition-colors"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-download mr-1.5"
-  }), "\u4E0B\u8F7D Skill"), /*#__PURE__*/React.createElement("button", {
+  }), "Download Skill"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowGuide(false),
     className: "text-slate-400 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-700 transition-colors"
   }, /*#__PURE__*/React.createElement("i", {
@@ -3137,7 +3271,85 @@ function CourseSelector({
     selectedCourseId: selectedId,
     onClose: () => setShowSubmissionsBrowser(false),
     socket: socket
-  }));
+  }), exportPreview && /*#__PURE__*/React.createElement("div", {
+    className: `fixed inset-0 ${window.__getTeacherLayerClass?.('modal') || 'z-[10020]'} bg-slate-950/75 p-6`,
+    onClick: () => setExportPreview(null)
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-slate-900 shadow-2xl",
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between border-b border-white/10 px-6 py-3"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs font-bold uppercase tracking-[0.28em] text-sky-300"
+  }, "PDF Export"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-1 text-lg font-black text-white"
+  }, exportPreview.course?.title || "Course export preview"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-1 text-xs text-slate-400"
+  }, "Check the preview before generating the PDF.")), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5"
+  }, /*#__PURE__*/React.createElement("label", {
+    htmlFor: exportScaleInputId,
+    className: "text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400"
+  }, "Scale"), /*#__PURE__*/React.createElement("input", {
+    id: exportScaleInputId,
+    type: "range",
+    min: "0.5",
+    max: "1.5",
+    step: "0.05",
+    value: exportPreview.contentScale || 1,
+    onChange: e => handleExportScaleChange(e.target.value),
+    className: "h-1.5 w-32 cursor-pointer appearance-none rounded-full bg-white/10 accent-sky-400"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "min-w-[46px] text-right text-xs font-black text-sky-300"
+  }, Math.round((exportPreview.contentScale || 1) * 100), "%"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => handleExportScaleChange(1),
+    className: "rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold text-slate-300 transition hover:bg-white/10 hover:text-white"
+  }, "Reset")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setExportPreview(null),
+    className: "flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-xmark text-base"
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "relative flex-1 bg-slate-950"
+  }, /*#__PURE__*/React.createElement("iframe", {
+    ref: previewFrameRef,
+    src: exportPreview.previewUrl,
+    onLoad: handleExportPreviewFrameLoad,
+    title: "Course export preview",
+    className: "h-full w-full border-0 bg-white"
+  }), exportPreview.status !== 'ready' && /*#__PURE__*/React.createElement("div", {
+    className: "pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/45"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: `w-full max-w-md rounded-2xl border px-6 py-4 text-center shadow-2xl ${exportPreview.status === 'error' ? 'border-red-400/30 bg-red-950/80 text-red-100' : 'border-white/10 bg-slate-900/90 text-slate-100'}`
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-lg font-black"
+  }, exportPreview.status === "error" ? "Preview failed" : exportPreview.status === "generating" ? "Generating PDF" : "Preparing preview"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 text-sm text-slate-300"
+  }, exportPreview.status === 'error' ? exportPreview.error || "Close this window and try again." : exportPreview.progressLabel || "Processing export task, please wait."), exportPreview.status !== 'error' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "mt-3 text-sm font-bold text-sky-300"
+  }, Math.round(exportPreview.progress || 0), "%"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 h-2 overflow-hidden rounded-full bg-white/10"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "h-full rounded-full bg-gradient-to-r from-sky-400 via-blue-500 to-cyan-300 transition-all duration-200",
+    style: {
+      width: `${Math.min(Math.max(exportPreview.progress || 0, 0), 100)}%`
+    }
+  })))))), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between border-t border-white/10 px-6 py-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm text-slate-400"
+  }, exportPreview.status === 'ready' ? `Export will use ${Math.round((exportPreview.contentScale || 1) * 100)}% content scale. After confirmation, the PDF will be generated directly without browser print.` : exportPreview.status === 'generating' ? `PDF is being generated. Current progress: ${Math.round(exportPreview.progress || 0)}%.` : exportPreview.status === 'error' ? "Preview is not available yet, so export is disabled." : "Export becomes available after the preview is ready."), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setExportPreview(null),
+    className: "rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10"
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleConfirmPdfExport,
+    disabled: exportPreview.status !== 'ready',
+    className: `rounded-xl px-4 py-2 text-sm font-bold transition ${exportPreview.status === 'ready' ? 'teacher-liquid-primary' : 'cursor-not-allowed border border-white/10 bg-white/5 text-slate-500'}`
+  }, "Export PDF"))))));
 }
 
 // ---- shared/teacher-shell/src/views/student-waiting-room.tsx ----
@@ -3922,6 +4134,7 @@ const ensureTeacherShellStyles = () => {
 window.__LumeSyncStartWindowDrag = event => {
   if (!event || event.button !== 0) return;
   if (event.target?.closest?.('[data-window-control="true"]')) return;
+  if (event.target?.closest?.('button, a, input, textarea, select, label, summary, [role="button"], [data-no-window-drag="true"]')) return;
   if (!window.electronAPI?.beginWindowDrag) return;
   window.electronAPI.beginWindowDrag({
     screenX: event.screenX,

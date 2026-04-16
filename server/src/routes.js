@@ -57,7 +57,7 @@ function resolveCourseExportTarget(course, format) {
 
 // 健康检查
 router.get('/health', (req, res) => {
-    res.json({ ok: true, app: 'LumeSync', port: Number(process.env.PORT || 3000) });
+    res.json({ ok: true, app: 'LumeSync', port: Number(process.env.PORT || 3000), pid: process.pid });
 });
 
 // 获取课程列表

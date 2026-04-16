@@ -5,6 +5,8 @@
   "scripts": {
     "start": "node scripts/start-native.js",
     "start:server": "node server/index.js",
+    "migrate-legacy-lume": "node scripts/migrate-legacy-lume.js",
+    "migrate-legacy-lume:batch": "node scripts/migrate-legacy-lume-batch.js",
     "build:teacher-shell": "node server/src/teacher-shell-build.js",
     "build": "npm run build:teacher-native",
     "build:native:configure": "cmake -S . -B build/native-vs -G \"Visual Studio 17 2022\" -A x64",

@@ -20,6 +20,7 @@ const KNOWN_FILE_URLS = {
     'react-dom.development.js': 'https://unpkg.com/react-dom@18/umd/react-dom.development.js',
     'babel.min.js': 'https://unpkg.com/@babel/standalone/babel.min.js',
     'babel.min.js.map': 'https://unpkg.com/@babel/standalone/babel.min.js.map',
+    'jszip.min.js': 'https://fastly.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
     'pdf.min.js': 'https://fastly.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
     'pdf.worker.min.js': 'https://fastly.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
     'face-api.min.js': 'https://fastly.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js',

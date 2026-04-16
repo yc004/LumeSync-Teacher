@@ -4,6 +4,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const zlib = require('zlib');
 const { config } = require('./config');
 
 const allowedExts = ['.lume', '.tsx', '.ts', '.jsx', '.js', '.pdf'];
@@ -32,6 +33,77 @@ function makeFolderId(relativeDir) {
 
 function makeCourseId(relativeFileWithoutExt) {
     return encodeFsId('course', relativeFileWithoutExt);
+}
+
+function isZipFile(absolutePath) {
+    try {
+        const fd = fs.openSync(absolutePath, 'r');
+        const buf = Buffer.alloc(4);
+        fs.readSync(fd, buf, 0, 4, 0);
+        fs.closeSync(fd);
+        return buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04;
+    } catch (_) {
+        return false;
+    }
+}
+
+function findEndOfCentralDirectory(buffer) {
+    const minOffset = Math.max(0, buffer.length - 0xffff - 22);
+    for (let offset = buffer.length - 22; offset >= minOffset; offset--) {
+        if (buffer.readUInt32LE(offset) === 0x06054b50) return offset;
+    }
+    return -1;
+}
+
+function readZipEntrySync(absolutePath, entryName) {
+    const buffer = fs.readFileSync(absolutePath);
+    const eocdOffset = findEndOfCentralDirectory(buffer);
+    if (eocdOffset < 0) return null;
+
+    const centralDirSize = buffer.readUInt32LE(eocdOffset + 12);
+    const centralDirOffset = buffer.readUInt32LE(eocdOffset + 16);
+    const centralDirEnd = Math.min(buffer.length, centralDirOffset + centralDirSize);
+    let offset = centralDirOffset;
+
+    while (offset + 46 <= centralDirEnd && buffer.readUInt32LE(offset) === 0x02014b50) {
+        const compressionMethod = buffer.readUInt16LE(offset + 10);
+        const compressedSize = buffer.readUInt32LE(offset + 20);
+        const fileNameLength = buffer.readUInt16LE(offset + 28);
+        const extraLength = buffer.readUInt16LE(offset + 30);
+        const commentLength = buffer.readUInt16LE(offset + 32);
+        const localHeaderOffset = buffer.readUInt32LE(offset + 42);
+        const name = buffer.slice(offset + 46, offset + 46 + fileNameLength).toString('utf8').replace(/\\/g, '/');
+
+        if (name === entryName) {
+            if (buffer.readUInt32LE(localHeaderOffset) !== 0x04034b50) return null;
+            const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+            const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+            const dataOffset = localHeaderOffset + 30 + localNameLength + localExtraLength;
+            const compressed = buffer.slice(dataOffset, dataOffset + compressedSize);
+
+            if (compressionMethod === 0) return compressed;
+            if (compressionMethod === 8) return zlib.inflateRawSync(compressed);
+            throw new Error(`Unsupported zip compression method ${compressionMethod} for ${entryName}`);
+        }
+
+        offset += 46 + fileNameLength + extraLength + commentLength;
+    }
+
+    return null;
+}
+
+function readLumeManifestSync(absolutePath) {
+    try {
+        if (!isZipFile(absolutePath)) return null;
+        const manifestBuffer = readZipEntrySync(absolutePath, 'manifest.json');
+        if (!manifestBuffer) return null;
+        const manifest = JSON.parse(manifestBuffer.toString('utf8'));
+        if (manifest?.runtime?.format !== 'lumesync-zip') return null;
+        return manifest;
+    } catch (err) {
+        console.warn(`[scanCourses] invalid lume zip manifest: ${absolutePath} (${err.message})`);
+        return null;
+    }
 }
 
 function scanCourses() {
@@ -75,6 +147,26 @@ function scanCourses() {
             try {
                 mtimeMs = fs.statSync(absolutePath).mtimeMs || 0;
             } catch (_) {}
+
+            if (ext === '.lume' && isZipFile(absolutePath)) {
+                const manifest = readLumeManifestSync(absolutePath);
+                if (manifest) {
+                    courses.push({
+                        id: manifest.id || makeCourseId(relativeFileWithoutExt),
+                        file: relativeFile,
+                        title: manifest.title || path.basename(relativeFileWithoutExt),
+                        icon: manifest.icon || 'Course',
+                        desc: manifest.desc || manifest.description || '',
+                        color: manifest.color || 'from-blue-500 to-indigo-600',
+                        type: 'lume-zip',
+                        schemaVersion: manifest.schemaVersion || '1.0.0',
+                        folderId: makeFolderId(folderPath),
+                        _extPriority: extPriority[ext] || 0,
+                        _mtimeMs: mtimeMs
+                    });
+                    continue;
+                }
+            }
 
             if (ext === '.pdf') {
                 courses.push({
@@ -125,7 +217,7 @@ function scanCourses() {
                 icon,
                 desc,
                 color,
-                type: 'script',
+                type: ext === '.lume' ? 'legacy-script' : 'script',
                 folderId: makeFolderId(folderPath),
                 _extPriority: extPriority[ext] || 0,
                 _mtimeMs: mtimeMs
@@ -184,5 +276,7 @@ module.exports = {
     deleteCourse,
     normalizeRelativePath,
     makeFolderId,
-    makeCourseId
+    makeCourseId,
+    isZipFile,
+    readLumeManifestSync
 };

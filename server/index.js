@@ -38,6 +38,10 @@ const { loadCoreModule } = require('./src/core-paths');
 const runtime = require('./src/socket');
 const { createViewerSessionToken, normalizeIp } = loadCoreModule('identity');
 const renderEngine = loadCoreModule('render-engine');
+const coreScriptCache = loadCoreModule('script-cache');
+const ensureCourseDependenciesCached = typeof coreScriptCache.ensureCourseDependenciesCached === 'function'
+    ? coreScriptCache.ensureCourseDependenciesCached
+    : null;
 
 const VIEWER_TOKEN_TTL_SEC = Number(process.env.LUMESYNC_VIEWER_TOKEN_TTL_SEC || 14400);
 const VIEWER_TOKEN_SECRET = String(process.env.LUMESYNC_VIEWER_TOKEN_SECRET || '');
@@ -209,6 +213,13 @@ runtime.setupSocketHandlers(io, {
         setCourseCatalog(catalog);
         return catalog;
     },
+    ensureCourseDependenciesCached: ensureCourseDependenciesCached
+        ? (courseId) => ensureCourseDependenciesCached(courseId, getCourseCatalog(), {
+            coursesDir: config.coursesDir,
+            libDir: config.libDir,
+            downloadTimeout: config.downloadTimeout
+        })
+        : null,
     registerDependencies: (deps) => {
         deps.forEach(({ filename, publicSrc }) => {
             if (filename && publicSrc) {

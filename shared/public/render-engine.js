@@ -2264,6 +2264,8 @@ function SyncClassroom({
                 .toast-animate { animation: slideInRight 0.3s ease-out forwards; }
             `));
 }
+window.CourseErrorBoundary = CourseErrorBoundary;
+window.SyncClassroom = SyncClassroom;
 
 // ---- core/src/browser/engine/runtime/resource-loader.tsx ----
 // ========================================================
@@ -2331,6 +2333,8 @@ const checkModelUrlValidity = async urls => {
   console.warn('[ResourceLoader] LAN model unreachable, using CDN: ' + urls.public);
   return urls.public;
 };
+window.loadScriptWithFallback = loadScriptWithFallback;
+window.checkModelUrlValidity = checkModelUrlValidity;
 
 // ---- core/src/browser/engine/runtime/camera-manager.tsx ----
 // ========================================================
@@ -3465,9 +3469,14 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
 // Host applications own teacher/student chrome and app flow.
 // ========================================================
 
+const engineLoadScriptWithFallback = window.loadScriptWithFallback;
+const engineCheckModelUrlValidity = window.checkModelUrlValidity;
+const EngineCourseErrorBoundary = window.CourseErrorBoundary;
+const EngineSyncClassroom = window.SyncClassroom;
+const EngineWebPageSlide = window.WebPageSlide;
 const ensurePdfJsLoaded = async () => {
   if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function') return true;
-  const ok = await loadScriptWithFallback('/lib/pdf.min.js', 'https://fastly.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js');
+  const ok = await engineLoadScriptWithFallback('/lib/pdf.min.js', 'https://fastly.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js');
   if (!ok || !window.pdfjsLib) return false;
   try {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/lib/pdf.worker.min.js';
@@ -3476,7 +3485,7 @@ const ensurePdfJsLoaded = async () => {
 };
 const ensureJsZipLoaded = async () => {
   if (window.JSZip && typeof window.JSZip.loadAsync === 'function') return true;
-  const ok = await loadScriptWithFallback('/lib/jszip.min.js', 'https://fastly.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+  const ok = await engineLoadScriptWithFallback('/lib/jszip.min.js', 'https://fastly.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
   return !!ok && !!window.JSZip && typeof window.JSZip.loadAsync === 'function';
 };
 const disposeLoadedLume = () => {
@@ -3614,6 +3623,56 @@ const validateLumeManifest = manifest => {
   });
   return entryMode;
 };
+const buildCourseDataFromMemory = async ({
+  manifest,
+  slides: memorySlides = [],
+  course = {}
+} = {}) => {
+  disposeLoadedLume();
+  const normalizedManifest = {
+    ...manifest,
+    runtime: {
+      format: 'lumesync-zip',
+      entryMode: 'pages',
+      ...(manifest?.runtime || {})
+    }
+  };
+  validateLumeManifest(normalizedManifest);
+  const memorySlideMap = new Map((Array.isArray(memorySlides) ? memorySlides : []).map(slide => [normalizeLumePath(slide?.file), String(slide?.source || '')]));
+  const assetUrl = assetPath => assetPath;
+  const compiledSlides = [];
+  for (const page of normalizedManifest.pages) {
+    const slidePath = normalizeLumePath(page.file);
+    const source = memorySlideMap.get(slidePath);
+    if (typeof source !== 'string' || !source.trim()) {
+      throw new Error(`Slide source not found in memory: ${page.file}`);
+    }
+    const moduleExports = compileLumeModule(source, slidePath, assetUrl, 'module');
+    const slideExport = resolveSlideExport(moduleExports, page);
+    compiledSlides.push({
+      id: page.id || slidePath,
+      title: page.title || page.id || slidePath,
+      transition: page.transition,
+      scrollable: page.scrollable === true,
+      component: slideExportToElement(slideExport, page)
+    });
+  }
+  const courseId = normalizedManifest.id || course.id || 'memory-course';
+  window.CourseGlobalContext = createExportCourseContext({
+    courseId,
+    slideIndex: 0
+  });
+  const courseData = {
+    id: courseId,
+    title: normalizedManifest.title || course.title || courseId,
+    icon: normalizedManifest.icon || course.icon || 'Course',
+    desc: normalizedManifest.desc || normalizedManifest.description || course.desc || '',
+    color: normalizedManifest.color || course.color || 'from-blue-500 to-indigo-600',
+    slides: compiledSlides
+  };
+  window.CourseData = courseData;
+  return courseData;
+};
 const loadLumeZipCourse = async (course, options = {}) => {
   const {
     socket,
@@ -3670,24 +3729,26 @@ const loadLumeZipCourse = async (course, options = {}) => {
     const source = await legacyFile.async('string');
     compileLumeModule(source, legacyPage.file, assetUrl, 'script');
     if (!window.CourseData) throw new Error('Legacy CourseData was not registered by ' + legacyPage.file);
-    window.CourseGlobalContext = createContext({
-      socket
-    });
-    setProgress(onProgress, {
-      currentStep: 'done',
-      currentFile: '',
-      progress: 100,
-      totalSteps: 5,
-      currentStepIndex: 5
-    });
-    return {
+    const legacyCourseData = {
       ...window.CourseData,
       id: window.CourseData.id || manifest.id || course.id,
       title: window.CourseData.title || manifest.title || course.title || course.id,
       icon: window.CourseData.icon || manifest.icon || course.icon,
       desc: window.CourseData.desc || manifest.desc || course.desc,
-      color: window.CourseData.color || manifest.color || course.color
+      color: window.CourseData.color || manifest.color || course.color,
+      dependencies: window.CourseData.dependencies || manifest.dependencies || [],
+      modelsUrls: window.CourseData.modelsUrls || manifest.modelsUrls
     };
+    window.CourseData = legacyCourseData;
+    return loadCourseDataDependencies(legacyCourseData, {
+      socket,
+      onProgress,
+      createContext,
+      baseSteps: 5,
+      firstDependencyStepIndex: 6,
+      dependencyProgressStart: 65,
+      dependencyProgressSpan: 25
+    });
   }
   const slides = [];
   for (const page of manifest.pages) {
@@ -3714,17 +3775,20 @@ const loadLumeZipCourse = async (course, options = {}) => {
     icon: manifest.icon || course.icon || 'Course',
     desc: manifest.desc || manifest.description || course.desc || '',
     color: manifest.color || course.color || 'from-blue-500 to-indigo-600',
+    dependencies: manifest.dependencies || [],
+    modelsUrls: manifest.modelsUrls,
     slides
   };
   window.CourseData = courseData;
-  setProgress(onProgress, {
-    currentStep: 'done',
-    currentFile: '',
-    progress: 100,
-    totalSteps: 5,
-    currentStepIndex: 5
+  return loadCourseDataDependencies(courseData, {
+    socket,
+    onProgress,
+    createContext,
+    baseSteps: 5,
+    firstDependencyStepIndex: 6,
+    dependencyProgressStart: 65,
+    dependencyProgressSpan: 25
   });
-  return courseData;
 };
 const getPdfDoc = pdfUrl => {
   if (!window.__LumeSyncPdfDocCache) window.__LumeSyncPdfDocCache = new Map();
@@ -3868,6 +3932,63 @@ const createExportCourseContext = ({
     error: 'Export preview mode does not accept submissions'
   })
 });
+const loadCourseDataDependencies = async (courseData, {
+  socket,
+  onProgress,
+  createContext = createCourseContext,
+  baseSteps = 3,
+  firstDependencyStepIndex = 4,
+  dependencyProgressStart = 30,
+  dependencyProgressSpan = 40
+} = {}) => {
+  const dependencies = Array.isArray(courseData?.dependencies) ? courseData.dependencies : [];
+  let totalSteps = baseSteps;
+  if (dependencies.length) totalSteps += dependencies.length;
+  if (courseData?.modelsUrls) totalSteps += 1;
+  if (dependencies.length) {
+    const depMappings = dependencies.filter(d => d.localSrc && d.publicSrc).map(d => ({
+      filename: d.localSrc.split('/').pop(),
+      publicSrc: d.publicSrc
+    }));
+    if (depMappings.length > 0 && socket) socket.emit('register-dependencies', depMappings);
+    let depIndex = 0;
+    for (const dep of dependencies) {
+      const fileName = dep.localSrc.split('/').pop();
+      setProgress(onProgress, {
+        currentStep: 'load-dependency',
+        currentFile: fileName,
+        progress: dependencyProgressStart + depIndex / Math.max(dependencies.length, 1) * dependencyProgressSpan,
+        totalSteps,
+        currentStepIndex: firstDependencyStepIndex + depIndex
+      });
+      await engineLoadScriptWithFallback(dep.localSrc, dep.publicSrc);
+      depIndex++;
+    }
+  }
+  let modelUrl = '';
+  if (courseData?.modelsUrls) {
+    setProgress(onProgress, {
+      currentStep: 'check-models',
+      currentFile: 'models',
+      progress: Math.min(95, dependencyProgressStart + dependencyProgressSpan + 5),
+      totalSteps,
+      currentStepIndex: firstDependencyStepIndex + dependencies.length
+    });
+    modelUrl = await engineCheckModelUrlValidity(courseData.modelsUrls);
+  }
+  window.CourseGlobalContext = createContext({
+    socket,
+    modelUrl
+  });
+  setProgress(onProgress, {
+    currentStep: 'done',
+    currentFile: '',
+    progress: 100,
+    totalSteps,
+    currentStepIndex: totalSteps
+  });
+  return courseData;
+};
 const loadCourse = async (course, options = {}) => {
   const {
     socket,
@@ -3973,53 +4094,11 @@ const loadCourse = async (course, options = {}) => {
     retries--;
   }
   if (!window.CourseData) throw new Error('CourseData was not registered by ' + course.file);
-  let totalSteps = 3;
-  const dependencies = Array.isArray(window.CourseData.dependencies) ? window.CourseData.dependencies : [];
-  if (dependencies.length) totalSteps += dependencies.length;
-  if (window.CourseData.modelsUrls) totalSteps += 1;
-  if (dependencies.length) {
-    const depMappings = dependencies.filter(d => d.localSrc && d.publicSrc).map(d => ({
-      filename: d.localSrc.split('/').pop(),
-      publicSrc: d.publicSrc
-    }));
-    if (depMappings.length > 0 && socket) socket.emit('register-dependencies', depMappings);
-    let depIndex = 0;
-    for (const dep of dependencies) {
-      const fileName = dep.localSrc.split('/').pop();
-      setProgress(onProgress, {
-        currentStep: 'load-dependency',
-        currentFile: fileName,
-        progress: 30 + depIndex / Math.max(dependencies.length, 1) * 40,
-        totalSteps,
-        currentStepIndex: 4 + depIndex
-      });
-      await loadScriptWithFallback(dep.localSrc, dep.publicSrc);
-      depIndex++;
-    }
-  }
-  let modelUrl = '';
-  if (window.CourseData.modelsUrls) {
-    setProgress(onProgress, {
-      currentStep: 'check-models',
-      currentFile: 'models',
-      progress: 75,
-      totalSteps,
-      currentStepIndex: 4 + dependencies.length
-    });
-    modelUrl = await checkModelUrlValidity(window.CourseData.modelsUrls);
-  }
-  window.CourseGlobalContext = createContext({
+  return loadCourseDataDependencies(window.CourseData, {
     socket,
-    modelUrl
+    onProgress,
+    createContext
   });
-  setProgress(onProgress, {
-    currentStep: 'done',
-    currentFile: '',
-    progress: 100,
-    totalSteps,
-    currentStepIndex: totalSteps
-  });
-  return window.CourseData;
 };
 function CourseStage(props) {
   const {
@@ -4029,7 +4108,7 @@ function CourseStage(props) {
     hideBottomBar = true,
     ...stageProps
   } = props;
-  return /*#__PURE__*/React.createElement(SyncClassroom, _extends({}, stageProps, {
+  return /*#__PURE__*/React.createElement(EngineSyncClassroom, _extends({}, stageProps, {
     renderChrome: renderChrome,
     renderTeacherOverlays: renderTeacherOverlays,
     hideTopBar: hideTopBar,
@@ -4042,12 +4121,14 @@ function CourseExportDocument({
   contentScale = 1
 }) {
   const slides = Array.isArray(courseData?.slides) ? courseData.slides : [];
-  const normalizedContentScale = Math.min(Math.max(Number(contentScale) || 1, 0.5), 1.5);
+  const normalizedContentScale = Math.min(Math.max(Number(contentScale) || 1, 0.2), 1.5);
+  const slideWidth = 1280;
+  const slideHeight = 720;
   const exportContentStyle = {
-    width: `${100 / normalizedContentScale}%`,
-    height: `${100 / normalizedContentScale}%`,
+    width: `${slideWidth}px`,
+    height: `${slideHeight}px`,
     transform: `scale(${normalizedContentScale})`,
-    transformOrigin: 'center center'
+    transformOrigin: 'top left'
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "min-h-screen bg-slate-200 px-6 py-8 text-slate-900 print:bg-white print:px-0 print:py-0"
@@ -4071,7 +4152,7 @@ function CourseExportDocument({
       aspectRatio: '16 / 9'
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex h-full w-full items-center justify-center overflow-hidden bg-white"
+    className: "relative h-full w-full overflow-hidden bg-white"
   }, /*#__PURE__*/React.createElement("div", {
     style: exportContentStyle
   }, slide?.component || /*#__PURE__*/React.createElement("div", {
@@ -4092,11 +4173,12 @@ const renderCourseExportDocument = (rootElement, props) => {
 };
 window.LumeSyncRenderEngine = {
   ...(window.LumeSyncRenderEngine || {}),
-  CourseErrorBoundary,
+  buildCourseDataFromMemory,
+  CourseErrorBoundary: EngineCourseErrorBoundary,
   CourseExportDocument,
   CourseStage,
   PdfPageSlide,
-  WebPageSlide,
+  WebPageSlide: EngineWebPageSlide,
   createCourseContext,
   createExportCourseContext,
   getPdfDoc,

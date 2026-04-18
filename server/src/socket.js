@@ -202,7 +202,8 @@ function setupSocketHandlers(io, {
     setCurrentSlideIndex,
     getCurrentCourseId,
     getCurrentSlideIndex,
-    getCourseCatalog
+    getCourseCatalog,
+    ensureCourseDependenciesCached
 }) {
     io.on('connection', (socket) => {
         const identity = resolveConnectionIdentity(socket);
@@ -250,10 +251,26 @@ function setupSocketHandlers(io, {
         // ========================================================
 
         // 选择课程
-        socket.on('select-course', (data) => {
+        socket.on('select-course', async (data) => {
             if (role !== 'host') return;
             const { courseId } = data;
             console.log(`[select-course] courseId=${courseId}`);
+            if (typeof ensureCourseDependenciesCached === 'function') {
+                try {
+                    const result = await ensureCourseDependenciesCached(courseId);
+                    if (result?.dependencies?.length) {
+                        const downloaded = (result.cached || []).filter(item => !item.alreadyCached).length;
+                        console.log(`[select-course] cached dependencies for ${courseId}: ${result.cached.length}/${result.dependencies.length} (${downloaded} downloaded)`);
+                    }
+                } catch (err) {
+                    console.warn(`[select-course] dependency cache failed for ${courseId}: ${err.message}`);
+                    socket.emit('course-dependency-cache-error', {
+                        courseId,
+                        error: err.message || 'Dependency cache failed'
+                    });
+                    return;
+                }
+            }
             setCurrentCourseId(courseId);
             setCurrentSlideIndex(0);
             io.emit('course-changed', { courseId, slideIndex: 0, hostSettings: currentHostSettings });

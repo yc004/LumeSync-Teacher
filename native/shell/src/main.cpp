@@ -1338,6 +1338,94 @@ class TeacherShellApp {
     return std::filesystem::path(fileBuffer);
   }
 
+  std::optional<std::filesystem::path> ShowOpenCourseDialog(bool* canceled) {
+    if (canceled) *canceled = false;
+
+    wchar_t fileBuffer[4096] = {};
+    static const wchar_t kLumeFilter[] = L"Lume Course Files (*.lume)\0*.lume\0All Files (*.*)\0*.*\0\0";
+
+    OPENFILENAMEW ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd_;
+    ofn.lpstrFile = fileBuffer;
+    ofn.nMaxFile = static_cast<DWORD>(std::size(fileBuffer));
+    ofn.lpstrFilter = kLumeFilter;
+    ofn.nFilterIndex = 1;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
+    ofn.lpstrDefExt = L"lume";
+
+    if (!GetOpenFileNameW(&ofn)) {
+      if (canceled && CommDlgExtendedError() == 0) *canceled = true;
+      return std::nullopt;
+    }
+
+    return std::filesystem::path(fileBuffer);
+  }
+
+  std::filesystem::path UniqueCourseImportPath(const std::filesystem::path& coursesDir, const std::filesystem::path& sourcePath) const {
+    std::wstring stem = sourcePath.stem().wstring();
+    std::wstring extension = sourcePath.extension().wstring();
+    if (stem.empty()) stem = L"course";
+    if (extension.empty()) extension = L".lume";
+
+    std::filesystem::path candidate = coursesDir / (stem + extension);
+    for (int index = 1; std::filesystem::exists(candidate); ++index) {
+      candidate = coursesDir / (stem + L"-" + std::to_wstring(index) + extension);
+    }
+    return candidate;
+  }
+
+  bool ImportCourse(std::wstring* resultJson, std::wstring* errorMessage) {
+    bool canceled = false;
+    const auto sourcePath = ShowOpenCourseDialog(&canceled);
+    if (!sourcePath) {
+      if (canceled) {
+        if (resultJson) *resultJson = L"{\"success\":false,\"canceled\":true,\"imported\":[]}";
+        return true;
+      }
+      if (errorMessage) *errorMessage = L"open dialog failed";
+      return false;
+    }
+
+    if (ToLowerCopy(sourcePath->extension().wstring()) != L".lume") {
+      if (errorMessage) *errorMessage = L"only .lume files can be imported";
+      return false;
+    }
+
+    const auto coursesDir = ResolveNativeCoursesDir();
+    if (!coursesDir) {
+      if (errorMessage) *errorMessage = L"courses directory not found";
+      return false;
+    }
+
+    std::error_code dirError;
+    std::filesystem::create_directories(*coursesDir, dirError);
+    if (dirError) {
+      if (errorMessage) *errorMessage = L"failed to create courses directory";
+      return false;
+    }
+
+    std::filesystem::path targetPath = UniqueCourseImportPath(*coursesDir, *sourcePath);
+    std::error_code equivalentError;
+    if (std::filesystem::exists(targetPath) && std::filesystem::equivalent(*sourcePath, targetPath, equivalentError)) {
+      targetPath = *sourcePath;
+    } else {
+      std::error_code copyError;
+      std::filesystem::copy_file(*sourcePath, targetPath, std::filesystem::copy_options::none, copyError);
+      if (copyError) {
+        if (errorMessage) *errorMessage = L"failed to import course file";
+        return false;
+      }
+    }
+
+    const std::wstring fileName = targetPath.filename().wstring();
+    if (resultJson) {
+      *resultJson = L"{\"success\":true,\"imported\":[{\"file\":\"" + lumesync::JsonEscape(fileName) +
+                    L"\",\"filename\":\"" + lumesync::JsonEscape(fileName) + L"\"}]}";
+    }
+    return true;
+  }
+
   bool ExportCourseFromPayload(const std::wstring& payload, std::wstring* resultJson, std::wstring* errorMessage) {
     const std::wstring courseFileRaw = lumesync::JsonStringField(payload, L"courseFile").value_or(L"");
     const std::wstring formatRaw = ToLowerCopy(lumesync::JsonStringField(payload, L"format").value_or(L"lume"));
@@ -1544,7 +1632,12 @@ class TeacherShellApp {
       std::wstring error;
       const bool ok = SaveGeneratedPdfFromPayload(payload, &responsePayload, &error);
       SendRpcResult(id, ok, responsePayload, ok ? L"" : error);
-    } else if (action == L"selectSubmissionDir" || action == L"importCourse") {
+    } else if (action == L"importCourse") {
+      std::wstring responsePayload = L"null";
+      std::wstring error;
+      const bool ok = ImportCourse(&responsePayload, &error);
+      SendRpcResult(id, ok, responsePayload, ok ? L"" : error);
+    } else if (action == L"selectSubmissionDir") {
       SendRpcResult(id, true, L"null");
     } else {
       SendRpcResult(id, false, L"null", L"unknown action");

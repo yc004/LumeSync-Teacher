@@ -44,6 +44,10 @@ function loadCoreModule(name) {
             dist: ['server', 'index.js'],
             fallback: ['server', 'index.js'],
         },
+        'script-cache': {
+            dist: ['server', 'script-cache.js'],
+            fallback: ['server', 'src', 'proxy.js'],
+        },
     };
 
     const entry = moduleMap[name];

@@ -69,15 +69,21 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
     const [addIp, setAddIp] = useState('');
     const [addName, setAddName] = useState('');
     const [addStudentId, setAddStudentId] = useState('');
+    const [addMac, setAddMac] = useState('');
     const [showAddForm, setShowAddForm] = useState(false);
     const [autoImporting, setAutoImporting] = useState(false);
     const [viewMode, setViewMode] = useState('grid');
     const [importError, setImportError] = useState(null);
     const [showMoreMenu, setShowMoreMenu] = useState(false);
     const [previewSeat, setPreviewSeat] = useState(null);
+    const [detailSeat, setDetailSeat] = useState(null);
+    const [selectedSeatIds, setSelectedSeatIds] = useState([]);
+    const [powerMenu, setPowerMenu] = useState(null);
+    const [selectionBox, setSelectionBox] = useState(null);
     const fileInputRef = useRef(null);
     const moreMenuRef = useRef(null);
     const moreMenuPopupRef = useRef(null);
+    const powerMenuPopupRef = useRef(null);
     const seatCanvasViewportRef = useRef(null);
     const seatCanvasRef = useRef(null);
 
@@ -96,6 +102,9 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                 && !classroomMenuPopupRef.current?.contains(e.target)
             ) {
                 setShowClassroomMenu(false);
+            }
+            if (powerMenuPopupRef.current && !powerMenuPopupRef.current.contains(e.target)) {
+                setPowerMenu(null);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -300,6 +309,71 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
     };
 
     const normalizeIp = ip => ip && ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+    const POWER_MENU_WIDTH = 192;
+    const POPUP_VIEWPORT_PADDING = 12;
+    const POWER_CONTROL_ACTIONS = [
+        { action: 'power-on', label: '\u5f00\u673a', icon: 'fa-power-off', confirmText: '\u786e\u8ba4\u5f00\u673a\u6240\u9009\u5b66\u751f\u673a\uff1f' },
+        { action: 'shutdown', label: '\u5173\u673a', icon: 'fa-circle-stop', confirmText: '\u786e\u8ba4\u5173\u95ed\u6240\u9009\u5b66\u751f\u673a\uff1f' },
+        { action: 'force-shutdown', label: '\u5f3a\u5236\u5173\u673a', icon: 'fa-power-off', confirmText: '\u786e\u8ba4\u5f3a\u5236\u5173\u95ed\u6240\u9009\u5b66\u751f\u673a\uff1f' },
+        { action: 'restart', label: '\u91cd\u542f', icon: 'fa-rotate-right', confirmText: '\u786e\u8ba4\u91cd\u542f\u6240\u9009\u5b66\u751f\u673a\uff1f' },
+        { action: 'force-restart', label: '\u5f3a\u5236\u91cd\u542f', icon: 'fa-arrows-rotate', confirmText: '\u786e\u8ba4\u5f3a\u5236\u91cd\u542f\u6240\u9009\u5b66\u751f\u673a\uff1f' },
+    ];
+    const getSeatMac = (seat) => seat?.mac || seat?.wakeMac || seat?.macAddress || '';
+    const getSelectedSeats = () => seats.filter(seat => selectedSeatIds.includes(seat.id));
+    const getPowerTargets = (items) => items
+        .map(seat => ({ ip: normalizeIp(seat.ip || ''), mac: getSeatMac(seat) }))
+        .filter(target => target.ip || target.mac);
+    const openPowerMenu = (event, targetSeats) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const ids = targetSeats.map(seat => seat.id);
+        setSelectedSeatIds(ids);
+        setPowerMenu({ x: event.clientX, y: event.clientY, seatIds: ids });
+    };
+    const sendPowerControl = (action, targetSeats = getSelectedSeats()) => {
+        const targets = getPowerTargets(targetSeats);
+        if (!socket || targets.length === 0) return;
+        const config = POWER_CONTROL_ACTIONS.find(item => item.action === action);
+        const needsMac = action === 'power-on';
+        const missingMac = needsMac ? targetSeats.filter(seat => !getSeatMac(seat)).length : 0;
+        const suffix = missingMac > 0
+            ? `\n\u6709 ${missingMac} \u53f0\u8bbe\u5907\u7f3a\u5c11 MAC \u5730\u5740\uff0c\u5c06\u65e0\u6cd5\u53d1\u9001 Wake-on-LAN \u5f00\u673a\u5305\u3002`
+            : '';
+        if (!confirm(`${config?.confirmText || '\u786e\u8ba4\u6267\u884c\u64cd\u4f5c\uff1f'}\n\u76ee\u6807\u6570\u91cf\uff1a${targets.length}${suffix}`)) return;
+        socket.emit('student:power-control', {
+            requestId: `power-${Date.now()}`,
+            action,
+            targets
+        });
+        setPowerMenu(null);
+    };
+    const openPowerMenuForSeats = (event, targetSeats) => {
+        openPowerMenu(event, targetSeats.filter(Boolean));
+    };
+    const openSeatDetail = (seat) => {
+        setDetailSeat(seat || null);
+        setPowerMenu(null);
+    };
+    const getPowerMenuStyle = () => {
+        if (!powerMenu) return undefined;
+        const estimatedHeight = 48 + 40 + 10 + POWER_CONTROL_ACTIONS.length * 40 + 16;
+        const maxLeft = Math.max(POPUP_VIEWPORT_PADDING, window.innerWidth - POWER_MENU_WIDTH - POPUP_VIEWPORT_PADDING);
+        const maxTop = Math.max(POPUP_VIEWPORT_PADDING, window.innerHeight - estimatedHeight - POPUP_VIEWPORT_PADDING);
+        return {
+            position: 'fixed',
+            left: Math.max(POPUP_VIEWPORT_PADDING, Math.min(powerMenu.x, maxLeft)),
+            top: Math.max(POPUP_VIEWPORT_PADDING, Math.min(powerMenu.y, maxTop)),
+            width: POWER_MENU_WIDTH,
+            maxHeight: `calc(100vh - ${POPUP_VIEWPORT_PADDING * 2}px)`,
+            overflowY: 'auto'
+        };
+    };
+    const toggleSeatSelected = (seat, additive = false) => {
+        setSelectedSeatIds(prev => {
+            if (!additive) return [seat.id];
+            return prev.includes(seat.id) ? prev.filter(id => id !== seat.id) : [...prev, seat.id];
+        });
+    };
     const handleClose = () => {
         if (editingId) {
             saveSeats(seats.map(s => s.id === editingId ? { ...s, name: editName } : s));
@@ -385,6 +459,32 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
         }).catch(() => {});
     };
 
+    const applyServerLayout = (layout) => {
+        if (!layout) return;
+        let serverClassrooms = null;
+        if (Array.isArray(layout)) {
+            serverClassrooms = {
+                default: {
+                    name: '默认班级',
+                    seats: layout.map(s => ({ ...s, ip: normalizeIp(s.ip) })),
+                    podiumAtTop: true
+                }
+            };
+        } else if (layout?.classrooms && typeof layout.classrooms === 'object') {
+            serverClassrooms = layout.classrooms;
+        } else if (typeof layout === 'object') {
+            serverClassrooms = layout;
+        }
+        if (!serverClassrooms || Object.keys(serverClassrooms).length === 0) return;
+        setClassrooms(serverClassrooms);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverClassrooms));
+        const lastUsed = localStorage.getItem('classroom-last-used');
+        const targetId = (lastUsed && serverClassrooms[lastUsed])
+            ? lastUsed
+            : (Object.keys(serverClassrooms)[0] || 'default');
+        setCurrentClassroomId(targetId);
+    };
+
     useEffect(() => {
         fetchOnline();
         const t = setInterval(fetchOnline, 3000);
@@ -393,32 +493,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
             .then(r => r.json())
             .then(d => {
                 if (!d?.success || !d.layout) return;
-
-                let serverClassrooms = null;
-                if (Array.isArray(d.layout)) {
-                    serverClassrooms = {
-                        default: {
-                            name: '默认班级',
-                            seats: d.layout.map(s => ({ ...s, ip: normalizeIp(s.ip) })),
-                            podiumAtTop: true
-                        }
-                    };
-                } else if (d.layout?.classrooms && typeof d.layout.classrooms === 'object') {
-                    serverClassrooms = d.layout.classrooms;
-                } else if (typeof d.layout === 'object') {
-                    serverClassrooms = d.layout;
-                }
-
-                if (!serverClassrooms || Object.keys(serverClassrooms).length === 0) return;
-
-                setClassrooms(serverClassrooms);
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(serverClassrooms));
-
-                const lastUsed = localStorage.getItem('classroom-last-used');
-                const targetId = (lastUsed && serverClassrooms[lastUsed])
-                    ? lastUsed
-                    : (Object.keys(serverClassrooms)[0] || 'default');
-                setCurrentClassroomId(targetId);
+                applyServerLayout(d.layout);
             })
             .catch(err => {
                 console.warn('[ClassroomView] Failed to load classroom layout from server:', err);
@@ -426,6 +501,44 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
 
         return () => clearInterval(t);
     }, []);
+
+    useEffect(() => {
+        if (!socket) return undefined;
+        const handleLayoutUpdated = (data) => {
+            if (data?.layout) applyServerLayout(data.layout);
+        };
+        socket.on('classroom-layout-updated', handleLayoutUpdated);
+        return () => socket.off?.('classroom-layout-updated', handleLayoutUpdated);
+    }, [socket, currentClassroomId]);
+
+    useEffect(() => {
+        if (!socket) return undefined;
+        const handlePowerAck = (data) => {
+            if (!data || data.action !== 'power-on') return;
+            if (data.success) {
+                const failed = Array.isArray(data.results) ? data.results.filter(item => !item?.success) : [];
+                const missingMacCount = failed.filter(item => item?.error === 'missing_mac').length;
+                if (missingMacCount > 0) {
+                    alert(`Wake-on-LAN \u5df2\u5c1d\u8bd5\u53d1\u9001\uff0c\u4f46\u6709 ${missingMacCount} \u53f0\u8bbe\u5907\u7f3a\u5c11 MAC \u5730\u5740\uff0c\u672a\u53d1\u9001\u5f00\u673a\u5305\u3002`);
+                }
+                return;
+            }
+            if (data.error === 'empty_targets') {
+                alert('\u672a\u627e\u5230\u53ef\u7528\u7684\u5f00\u673a\u76ee\u6807\u3002');
+                return;
+            }
+            const missingMacCount = Array.isArray(data.results) ? data.results.filter(item => item?.error === 'missing_mac').length : 0;
+            if (missingMacCount > 0) {
+                alert(`\u672a\u53d1\u9001 Wake-on-LAN \u5f00\u673a\u5305\uff1a${missingMacCount} \u53f0\u8bbe\u5907\u7f3a\u5c11 MAC \u5730\u5740\u3002`);
+                return;
+            }
+            if (data.error) {
+                alert(`\u5f00\u673a\u64cd\u4f5c\u5931\u8d25\uff1a${data.error}`);
+            }
+        };
+        socket.on('student:power-control:ack', handlePowerAck);
+        return () => socket.off?.('student:power-control:ack', handlePowerAck);
+    }, [socket]);
 
     const handleAutoImport = () => {
         setAutoImporting(true);
@@ -509,6 +622,42 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
         window.addEventListener('mouseup', onMouseUp);
     };
 
+    const handleCanvasMouseDown = (event) => {
+        if (event.button !== 0) return;
+        if (event.target?.closest?.('[data-seat-card="true"]')) return;
+        const viewport = seatCanvasViewportRef.current;
+        const canvas = seatCanvasRef.current;
+        if (!viewport || !canvas) return;
+        event.preventDefault();
+        setPowerMenu(null);
+        const canvasRect = canvas.getBoundingClientRect();
+        const start = toCanvasPointerPos(event, canvasRect, viewport);
+        const updateSelection = (current) => {
+            const left = Math.min(start.x, current.x);
+            const top = Math.min(start.y, current.y);
+            const width = Math.abs(current.x - start.x);
+            const height = Math.abs(current.y - start.y);
+            setSelectionBox({ left, top, width, height });
+            const right = left + width;
+            const bottom = top + height;
+            const ids = seats.filter(seat => {
+                const pos = getSeatCanvasPosition(seat);
+                return pos.x < right && pos.x + SEAT_CARD_WIDTH > left && pos.y < bottom && pos.y + SEAT_CARD_HEIGHT > top;
+            }).map(seat => seat.id);
+            setSelectedSeatIds(ids);
+        };
+        const onMove = (moveEvent) => {
+            updateSelection(toCanvasPointerPos(moveEvent, canvasRect, viewport));
+        };
+        const onUp = () => {
+            setSelectionBox(null);
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    };
+
     const handleDownloadTemplate = () => {
         const content = [
             '# 机房座位列表模板',
@@ -577,13 +726,14 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                             const ip = normalizeIp(s && s.ip ? String(s.ip).trim() : '');
                             const name = s && s.name ? String(s.name) : '';
                             const studentId = s && s.studentId ? String(s.studentId) : '';
+                            const mac = s && (s.mac || s.wakeMac || s.macAddress) ? String(s.mac || s.wakeMac || s.macAddress).trim() : '';
                             const row = s && Number.isFinite(Number(s.row)) ? Math.max(1, Number(s.row)) : null;
                             const col = s && Number.isFinite(Number(s.col)) ? Math.max(1, Number(s.col)) : null;
                             const x = s && Number.isFinite(Number(s.x)) ? Math.max(0, Number(s.x)) : null;
                             const y = s && Number.isFinite(Number(s.y)) ? Math.max(0, Number(s.y)) : null;
                             if (!ip || ((!row || !col) && (x === null || y === null))) return null;
                             const id = s && s.id ? String(s.id) : `seat-${Date.now()}-${ip}-${idx}`;
-                            return { id, ip, name, studentId, row, col, x, y };
+                            return { id, ip, name, studentId, mac, row, col, x, y };
                         })
                         .filter(Boolean);
                     if (normalized.length === 0) {
@@ -608,14 +758,15 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                 const ip = normalizeIp(parts[0].trim());
                 const name = parts[1] ? parts[1].trim() : '';
                 const studentId = parts[2] ? parts[2].trim() : '';
-                const row = parts[3] ? parseInt(parts[3].trim(), 10) : null;
-                const col = parts[4] ? parseInt(parts[4].trim(), 10) : null;
-                const x = parts[5] ? parseFloat(parts[5].trim()) : null;
-                const y = parts[6] ? parseFloat(parts[6].trim()) : null;
+                const mac = parts[3] ? parts[3].trim() : '';
+                const row = parts[4] ? parseInt(parts[4].trim(), 10) : null;
+                const col = parts[5] ? parseInt(parts[5].trim(), 10) : null;
+                const x = parts[6] ? parseFloat(parts[6].trim()) : null;
+                const y = parts[7] ? parseFloat(parts[7].trim()) : null;
                 if (!ip) { errors.push(`第 ${idx + 1} 行 IP 为空`); return; }
                 if (row !== null && (isNaN(row) || row < 1)) { errors.push(`第 ${idx + 1} 行 行号无效`); return; }
                 if (col !== null && (isNaN(col) || col < 1)) { errors.push(`第 ${idx + 1} 行 列号无效`); return; }
-                imported.push({ ip, name, studentId, row: row || null, col: col || null, x: x ?? null, y: y ?? null });
+                imported.push({ ip, name, studentId, mac, row: row || null, col: col || null, x: x ?? null, y: y ?? null });
             });
             if (errors.length > 0) {
                 setImportError(errors.slice(0, 3).join('；') + (errors.length > 3 ? `…等 ${errors.length} 处错误` : ''));
@@ -645,9 +796,9 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                     c = grid.col;
                 }
                 if (existing) {
-                    nextSeats = nextSeats.map(s => s.ip === item.ip ? { ...s, name: item.name || s.name, studentId: item.studentId || s.studentId, row: r, col: c, x, y } : s);
+                    nextSeats = nextSeats.map(s => s.ip === item.ip ? { ...s, name: item.name || s.name, studentId: item.studentId || s.studentId, mac: item.mac || getSeatMac(s), row: r, col: c, x, y } : s);
                 } else {
-                    nextSeats.push({ id: `seat-${Date.now()}-${item.ip}`, ip: item.ip, name: item.name, studentId: item.studentId, row: r, col: c, x, y });
+                    nextSeats.push({ id: `seat-${Date.now()}-${item.ip}`, ip: item.ip, name: item.name, studentId: item.studentId, mac: item.mac, row: r, col: c, x, y });
                 }
             });
             saveSeats(nextSeats);
@@ -676,7 +827,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
             classroomId: currentClassroomId,
             classroomName: currentClassroom.name,
             podiumAtTop: currentPodiumTop,
-            seats: seats.map(s => ({ ip: s.ip, name: s.name || '', studentId: s.studentId || '', row: s.row, col: s.col, x: s.x, y: s.y }))
+            seats: seats.map(s => ({ ip: s.ip, name: s.name || '', studentId: s.studentId || '', mac: getSeatMac(s), row: s.row, col: s.col, x: s.x, y: s.y }))
         };
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
         downloadBlob(blob, `classroom-${currentClassroom.name}-${getStamp()}.json`);
@@ -687,7 +838,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
             '# 格式：ip,名称,学号,行,列,x,y',
             ...[...seats]
                 .sort((a, b) => a.row !== b.row ? a.row - b.row : a.col - b.col)
-                .map(s => `${s.ip},${String(s.name || '').replace(/,/g, ' ')},${String(s.studentId || '').replace(/,/g, ' ')},${s.row},${s.col},${s.x ?? ''},${s.y ?? ''}`)
+                .map(s => `${s.ip},${String(s.name || '').replace(/,/g, ' ')},${String(s.studentId || '').replace(/,/g, ' ')},${String(getSeatMac(s) || '').replace(/,/g, ' ')},${s.row},${s.col},${s.x ?? ''},${s.y ?? ''}`)
         ].join('\n');
         const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
         downloadBlob(blob, `classroom-seats-${getStamp()}.csv`);
@@ -696,8 +847,8 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
     const handleAddSeat = () => {
         if (!addIp.trim()) return;
         const id = `seat-${Date.now()}`;
-        saveSeats([...seats, { id, ip: normalizeIp(addIp.trim()), name: addName.trim(), studentId: addStudentId.trim(), row: Number(addRow), col: Number(addCol) }]);
-        setAddIp(''); setAddName(''); setAddStudentId(''); setShowAddForm(false);
+        saveSeats([...seats, { id, ip: normalizeIp(addIp.trim()), name: addName.trim(), studentId: addStudentId.trim(), mac: addMac.trim(), row: Number(addRow), col: Number(addCol) }]);
+        setAddIp(''); setAddName(''); setAddStudentId(''); setAddMac(''); setShowAddForm(false);
     };
 
     const handleDelete = (id) => saveSeats(seats.filter(s => s.id !== id));
@@ -781,14 +932,22 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
         const alerts = recentAlerts[seat.ip] || [];
         const lastAlert = alerts[alerts.length - 1];
         const screenshot = studentScreenshots[seat.ip] || null;
+        const isSelected = selectedSeatIds.includes(seat.id);
         const isDragging = dragId === seat.id;
         return (
             <div
                 key={seat.id}
+                data-seat-card="true"
                 onMouseDown={e => handleSeatMouseDown(e, seat)}
-                onClick={() => screenshot?.dataUrl && setPreviewSeat({ seat, screenshot })}
+                onContextMenu={e => openPowerMenuForSeats(e, isSelected ? getSelectedSeats() : [seat])}
+                onClick={(e) => {
+                    if (e.ctrlKey || e.metaKey) { toggleSeatSelected(seat, true); return; }
+                    toggleSeatSelected(seat, false);
+                    if (screenshot?.dataUrl) setPreviewSeat({ seat, screenshot });
+                }}
                 className={`absolute overflow-hidden rounded-[20px] border cursor-grab select-none group ${getSeatTransitionClass(isDragging)} ${getSeatCardGuideClass(seat)} ${getSeatSnapIndicatorClass(seat)}
                     ${isDragging ? `opacity-85 scale-[0.98] z-20 ${getSeatDragShadowClass(isDragging)}` : 'hover:-translate-y-0.5'}
+                    ${isSelected ? 'ring-2 ring-sky-300/85 border-sky-200/80 shadow-[0_0_0_2px_rgba(125,211,252,0.22),0_22px_42px_rgba(56,189,248,0.22)]' : ''}
                     ${lastAlert
                         ? 'ring-2 ring-amber-300/70 border-amber-200/50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_22px_40px_rgba(251,191,36,0.18)]'
                         : isOnline
@@ -928,6 +1087,9 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                                     ) : <span className="text-slate-500">-</span>}
                                 </td>
                                 <td className="rounded-r-2xl px-2 sm:px-3 py-3 text-center">
+                                    <button onClick={(e) => openPowerMenuForSeats(e, [seat])} className="mr-3 text-slate-400 hover:text-sky-300 transition-colors text-[10px] sm:text-xs" title="电源控制">
+                                        <i className="fas fa-sliders"></i>
+                                    </button>
                                     <button onClick={() => handleDelete(seat.id)} className="text-slate-400 hover:text-red-400 transition-colors text-[10px] sm:text-xs" title="删除">
                                         <i className="fas fa-trash-can"></i>
                                     </button>
@@ -950,12 +1112,29 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                     ref={seatCanvasRef}
                     className="relative mx-auto"
                     style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, minWidth: `${canvasWidth}px` }}
+                    onMouseDown={handleCanvasMouseDown}
+                    onContextMenu={(event) => {
+                        if (event.target?.closest?.('[data-seat-card="true"]')) return;
+                        const targets = getSelectedSeats();
+                        if (targets.length > 0) openPowerMenuForSeats(event, targets);
+                    }}
                 >
                     <div
                         className={`pointer-events-none absolute inset-0 rounded-[24px] ${getCanvasGridClass()}`}
                         style={getCanvasGridStyle()}
                     />
                     {seats.map(renderSeat)}
+                    {selectionBox && (
+                        <div
+                            className="pointer-events-none absolute rounded-xl border border-sky-200/80 bg-sky-300/18 shadow-[0_0_0_1px_rgba(125,211,252,0.18)]"
+                            style={{
+                                left: `${selectionBox.left}px`,
+                                top: `${selectionBox.top}px`,
+                                width: `${selectionBox.width}px`,
+                                height: `${selectionBox.height}px`
+                            }}
+                        />
+                    )}
                 </div>
             </div>
         );
@@ -1094,6 +1273,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                             <input value={addIp} onChange={e => setAddIp(e.target.value)} placeholder="IP 地址" className="w-28 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-xs text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-40 sm:text-sm" />
                             <input value={addName} onChange={e => setAddName(e.target.value)} placeholder="学生姓名" className="w-24 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-xs text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-32 sm:text-sm" />
                             <input value={addStudentId} onChange={e => setAddStudentId(e.target.value)} placeholder="学号" className="hidden w-28 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-sm text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:block" />
+                            <input value={addMac} onChange={e => setAddMac(e.target.value)} placeholder="MAC" className="hidden w-36 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-sm text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 md:block" />
                             <span className="text-xs text-slate-300 sm:text-sm">行</span>
                             <input type="number" min="1" value={addRow} onChange={e => setAddRow(e.target.value)} className="w-14 rounded-2xl border border-white/18 bg-slate-950/45 px-2 py-2 text-center text-xs text-slate-100 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-16 sm:text-sm" />
                             <span className="text-xs text-slate-300 sm:text-sm">列</span>
@@ -1178,6 +1358,79 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                             </div>
                             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-right text-sm text-slate-200">
                                 {formatCapturedDateTime(previewSeat.screenshot.capturedAt) ? `截图时间 ${formatCapturedDateTime(previewSeat.screenshot.capturedAt)}` : ''}
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )}
+
+                {powerMenu && createPortal(
+                    <div
+                        ref={powerMenuPopupRef}
+                        className={`teacher-glass-dark rounded-[18px] py-2 ${(window.__getTeacherLayerClass?.('popup') || 'z-[10040]')} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`}
+                        style={getPowerMenuStyle()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                            已选 {powerMenu.seatIds.length} 台
+                        </div>
+                        <button
+                            onClick={() => openSeatDetail(seats.find(seat => seat.id === powerMenu.seatIds[0]))}
+                            className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+                        >
+                            <i className="fas fa-circle-info mr-2 w-5 text-center"></i>查看详细信息
+                        </button>
+                        <div className="my-1 h-px bg-white/10 mx-2"></div>
+                        {POWER_CONTROL_ACTIONS.map(item => (
+                            <button
+                                key={item.action}
+                                onClick={() => sendPowerControl(item.action, seats.filter(seat => powerMenu.seatIds.includes(seat.id)))}
+                                className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+                            >
+                                <i className={`fas ${item.icon} mr-2 w-5 text-center`}></i>{item.label}
+                            </button>
+                        ))}
+                    </div>,
+                    document.body
+                )}
+
+                {detailSeat && createPortal(
+                    <div
+                        className={`fixed inset-0 ${(window.__getTeacherLayerClass?.('modal') || 'z-[10020]')} flex items-center justify-center bg-black/65 p-6 backdrop-blur-sm`}
+                        onClick={() => setDetailSeat(null)}
+                    >
+                        <div
+                            className="teacher-glass-dark w-[92vw] max-w-lg rounded-[28px] border border-white/14 p-6 shadow-[0_28px_80px_rgba(2,6,23,0.45)]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="mb-5 flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                    <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-sky-200/20 bg-sky-300/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-100">
+                                        <i className="fas fa-desktop"></i>
+                                        {'\u8bbe\u5907\u8be6\u60c5'}
+                                    </div>
+                                    <h3 className="truncate text-xl font-black text-white">{detailSeat.name || '\u672a\u547d\u540d\u8bbe\u5907'}</h3>
+                                    <p className="mt-1 text-sm text-slate-300">{onlineIPs.includes(detailSeat.ip) ? '\u5728\u7ebf' : '\u79bb\u7ebf'}</p>
+                                </div>
+                                <button onClick={() => setDetailSeat(null)} className="flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-white/8 text-white/80 hover:bg-white/15">
+                                    <i className="fas fa-xmark"></i>
+                                </button>
+                            </div>
+                            <div className="grid gap-3 text-sm sm:grid-cols-2">
+                                {[
+                                    ['IP \u5730\u5740', detailSeat.ip || '-'],
+                                    ['MAC \u5730\u5740', getSeatMac(detailSeat) || '-'],
+                                    ['\u8bbe\u5907\u540d\u79f0', detailSeat.name || '-'],
+                                    ['\u5b66\u53f7', detailSeat.studentId || '-'],
+                                    ['\u5ea7\u4f4d\u884c\u5217', `${detailSeat.row || '-'} \u884c / ${detailSeat.col || '-'} \u5217`],
+                                    ['\u5728\u7ebf\u72b6\u6001', onlineIPs.includes(detailSeat.ip) ? '\u5728\u7ebf' : '\u79bb\u7ebf'],
+                                ].map(([label, value]) => (
+                                    <div key={label} className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3">
+                                        <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</div>
+                                        <div className="break-all font-mono text-slate-100">{value}</div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>,

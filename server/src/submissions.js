@@ -38,6 +38,57 @@ function readClassroomLayout() {
     }
 }
 
+function normalizeLayoutIp(value) {
+    const text = String(value || '').trim();
+    return text.startsWith('::ffff:') ? text.slice(7) : text;
+}
+
+function writeClassroomLayout(layout) {
+    const dataDir = path.dirname(config.classroomLayoutPath);
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(config.classroomLayoutPath, JSON.stringify(layout, null, 2), 'utf-8');
+}
+
+function updateSeatDeviceInfo(clientIp, info = {}) {
+    const ip = String(clientIp || '').trim();
+    if (!ip) return { success: false, updated: false, error: 'missing_ip' };
+
+    const mac = String(info.mac || '').trim();
+    const deviceName = String(info.deviceName || '').trim();
+    const clientId = String(info.clientId || '').trim();
+    if (!mac && !deviceName && !clientId) return { success: false, updated: false, error: 'empty_info' };
+
+    const layout = readClassroomLayout();
+    if (!layout) return { success: true, updated: false, reason: 'layout_missing' };
+
+    let updatedSeat = null;
+    const apply = (seat) => {
+        if (!seat || normalizeLayoutIp(seat.ip) !== ip) return false;
+        if (mac) seat.mac = mac;
+        if (deviceName) seat.deviceName = deviceName;
+        if (clientId) seat.clientId = clientId;
+        updatedSeat = { ...seat };
+        return true;
+    };
+
+    let updated = false;
+    if (Array.isArray(layout)) {
+        updated = layout.some(apply);
+    } else if (Array.isArray(layout?.seats)) {
+        updated = layout.seats.some(apply);
+    } else if (layout?.classrooms && typeof layout.classrooms === 'object') {
+        updated = Object.values(layout.classrooms).some(classroom => Array.isArray(classroom?.seats) && classroom.seats.some(apply));
+    } else if (typeof layout === 'object') {
+        updated = Object.values(layout).some(classroom => Array.isArray(classroom?.seats) && classroom.seats.some(apply));
+    }
+
+    if (!updated) return { success: true, updated: false, reason: 'seat_not_found' };
+    writeClassroomLayout(layout);
+    return { success: true, updated: true, layout, seat: updatedSeat };
+}
+
 // 从座位表读取学生信息
 function getStudentFromClassroomLayout(clientIp) {
     const layout = readClassroomLayout();
@@ -86,15 +137,8 @@ function saveClassroomLayout(layout, res) {
     }
 
     try {
-        const dataDir = path.dirname(config.classroomLayoutPath);
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
-
-        const layoutPath = config.classroomLayoutPath;
-        fs.writeFileSync(layoutPath, JSON.stringify(layout, null, 2), 'utf-8');
-
-        console.log(`[classroom-layout] Saved layout to ${layoutPath}`);
+        writeClassroomLayout(layout);
+        console.log(`[classroom-layout] Saved layout to ${config.classroomLayoutPath}`);
         res.json({ success: true });
     } catch (err) {
         console.error('[classroom-layout] Error saving layout:', err);
@@ -280,6 +324,7 @@ function saveSubmission(reqBody, res) {
 
 module.exports = {
     getStudentFromClassroomLayout,
+    updateSeatDeviceInfo,
     saveClassroomLayout,
     saveSubmission
 };

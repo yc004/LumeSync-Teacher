@@ -678,15 +678,21 @@ function ClassroomView({
   const [addIp, setAddIp] = useState('');
   const [addName, setAddName] = useState('');
   const [addStudentId, setAddStudentId] = useState('');
+  const [addMac, setAddMac] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [autoImporting, setAutoImporting] = useState(false);
   const [viewMode, setViewMode] = useState('grid');
   const [importError, setImportError] = useState(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [previewSeat, setPreviewSeat] = useState(null);
+  const [detailSeat, setDetailSeat] = useState(null);
+  const [selectedSeatIds, setSelectedSeatIds] = useState([]);
+  const [powerMenu, setPowerMenu] = useState(null);
+  const [selectionBox, setSelectionBox] = useState(null);
   const fileInputRef = useRef(null);
   const moreMenuRef = useRef(null);
   const moreMenuPopupRef = useRef(null);
+  const powerMenuPopupRef = useRef(null);
   const seatCanvasViewportRef = useRef(null);
   const seatCanvasRef = useRef(null);
   useEffect(() => {
@@ -696,6 +702,9 @@ function ClassroomView({
       }
       if (classroomMenuRef.current && !classroomMenuRef.current.contains(e.target) && !classroomMenuPopupRef.current?.contains(e.target)) {
         setShowClassroomMenu(false);
+      }
+      if (powerMenuPopupRef.current && !powerMenuPopupRef.current.contains(e.target)) {
+        setPowerMenu(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -924,6 +933,93 @@ function ClassroomView({
     window.electronAPI?.maximizeWindow?.();
   };
   const normalizeIp = ip => ip && ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  const POWER_MENU_WIDTH = 192;
+  const POPUP_VIEWPORT_PADDING = 12;
+  const POWER_CONTROL_ACTIONS = [{
+    action: 'power-on',
+    label: '\u5f00\u673a',
+    icon: 'fa-power-off',
+    confirmText: '\u786e\u8ba4\u5f00\u673a\u6240\u9009\u5b66\u751f\u673a\uff1f'
+  }, {
+    action: 'shutdown',
+    label: '\u5173\u673a',
+    icon: 'fa-circle-stop',
+    confirmText: '\u786e\u8ba4\u5173\u95ed\u6240\u9009\u5b66\u751f\u673a\uff1f'
+  }, {
+    action: 'force-shutdown',
+    label: '\u5f3a\u5236\u5173\u673a',
+    icon: 'fa-power-off',
+    confirmText: '\u786e\u8ba4\u5f3a\u5236\u5173\u95ed\u6240\u9009\u5b66\u751f\u673a\uff1f'
+  }, {
+    action: 'restart',
+    label: '\u91cd\u542f',
+    icon: 'fa-rotate-right',
+    confirmText: '\u786e\u8ba4\u91cd\u542f\u6240\u9009\u5b66\u751f\u673a\uff1f'
+  }, {
+    action: 'force-restart',
+    label: '\u5f3a\u5236\u91cd\u542f',
+    icon: 'fa-arrows-rotate',
+    confirmText: '\u786e\u8ba4\u5f3a\u5236\u91cd\u542f\u6240\u9009\u5b66\u751f\u673a\uff1f'
+  }];
+  const getSeatMac = seat => seat?.mac || seat?.wakeMac || seat?.macAddress || '';
+  const getSelectedSeats = () => seats.filter(seat => selectedSeatIds.includes(seat.id));
+  const getPowerTargets = items => items.map(seat => ({
+    ip: normalizeIp(seat.ip || ''),
+    mac: getSeatMac(seat)
+  })).filter(target => target.ip || target.mac);
+  const openPowerMenu = (event, targetSeats) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const ids = targetSeats.map(seat => seat.id);
+    setSelectedSeatIds(ids);
+    setPowerMenu({
+      x: event.clientX,
+      y: event.clientY,
+      seatIds: ids
+    });
+  };
+  const sendPowerControl = (action, targetSeats = getSelectedSeats()) => {
+    const targets = getPowerTargets(targetSeats);
+    if (!socket || targets.length === 0) return;
+    const config = POWER_CONTROL_ACTIONS.find(item => item.action === action);
+    const needsMac = action === 'power-on';
+    const missingMac = needsMac ? targetSeats.filter(seat => !getSeatMac(seat)).length : 0;
+    const suffix = missingMac > 0 ? `\n\u6709 ${missingMac} \u53f0\u8bbe\u5907\u7f3a\u5c11 MAC \u5730\u5740\uff0c\u5c06\u65e0\u6cd5\u53d1\u9001 Wake-on-LAN \u5f00\u673a\u5305\u3002` : '';
+    if (!confirm(`${config?.confirmText || '\u786e\u8ba4\u6267\u884c\u64cd\u4f5c\uff1f'}\n\u76ee\u6807\u6570\u91cf\uff1a${targets.length}${suffix}`)) return;
+    socket.emit('student:power-control', {
+      requestId: `power-${Date.now()}`,
+      action,
+      targets
+    });
+    setPowerMenu(null);
+  };
+  const openPowerMenuForSeats = (event, targetSeats) => {
+    openPowerMenu(event, targetSeats.filter(Boolean));
+  };
+  const openSeatDetail = seat => {
+    setDetailSeat(seat || null);
+    setPowerMenu(null);
+  };
+  const getPowerMenuStyle = () => {
+    if (!powerMenu) return undefined;
+    const estimatedHeight = 48 + 40 + 10 + POWER_CONTROL_ACTIONS.length * 40 + 16;
+    const maxLeft = Math.max(POPUP_VIEWPORT_PADDING, window.innerWidth - POWER_MENU_WIDTH - POPUP_VIEWPORT_PADDING);
+    const maxTop = Math.max(POPUP_VIEWPORT_PADDING, window.innerHeight - estimatedHeight - POPUP_VIEWPORT_PADDING);
+    return {
+      position: 'fixed',
+      left: Math.max(POPUP_VIEWPORT_PADDING, Math.min(powerMenu.x, maxLeft)),
+      top: Math.max(POPUP_VIEWPORT_PADDING, Math.min(powerMenu.y, maxTop)),
+      width: POWER_MENU_WIDTH,
+      maxHeight: `calc(100vh - ${POPUP_VIEWPORT_PADDING * 2}px)`,
+      overflowY: 'auto'
+    };
+  };
+  const toggleSeatSelected = (seat, additive = false) => {
+    setSelectedSeatIds(prev => {
+      if (!additive) return [seat.id];
+      return prev.includes(seat.id) ? prev.filter(id => id !== seat.id) : [...prev, seat.id];
+    });
+  };
   const handleClose = () => {
     if (editingId) {
       saveSeats(seats.map(s => s.id === editingId ? {
@@ -1017,39 +1113,79 @@ function ClassroomView({
       setOnlineIPs((d.students || []).map(normalizeIp));
     }).catch(() => {});
   };
+  const applyServerLayout = layout => {
+    if (!layout) return;
+    let serverClassrooms = null;
+    if (Array.isArray(layout)) {
+      serverClassrooms = {
+        default: {
+          name: '默认班级',
+          seats: layout.map(s => ({
+            ...s,
+            ip: normalizeIp(s.ip)
+          })),
+          podiumAtTop: true
+        }
+      };
+    } else if (layout?.classrooms && typeof layout.classrooms === 'object') {
+      serverClassrooms = layout.classrooms;
+    } else if (typeof layout === 'object') {
+      serverClassrooms = layout;
+    }
+    if (!serverClassrooms || Object.keys(serverClassrooms).length === 0) return;
+    setClassrooms(serverClassrooms);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(serverClassrooms));
+    const lastUsed = localStorage.getItem('classroom-last-used');
+    const targetId = lastUsed && serverClassrooms[lastUsed] ? lastUsed : Object.keys(serverClassrooms)[0] || 'default';
+    setCurrentClassroomId(targetId);
+  };
   useEffect(() => {
     fetchOnline();
     const t = setInterval(fetchOnline, 3000);
     fetch('/api/classroom-layout').then(r => r.json()).then(d => {
       if (!d?.success || !d.layout) return;
-      let serverClassrooms = null;
-      if (Array.isArray(d.layout)) {
-        serverClassrooms = {
-          default: {
-            name: '默认班级',
-            seats: d.layout.map(s => ({
-              ...s,
-              ip: normalizeIp(s.ip)
-            })),
-            podiumAtTop: true
-          }
-        };
-      } else if (d.layout?.classrooms && typeof d.layout.classrooms === 'object') {
-        serverClassrooms = d.layout.classrooms;
-      } else if (typeof d.layout === 'object') {
-        serverClassrooms = d.layout;
-      }
-      if (!serverClassrooms || Object.keys(serverClassrooms).length === 0) return;
-      setClassrooms(serverClassrooms);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(serverClassrooms));
-      const lastUsed = localStorage.getItem('classroom-last-used');
-      const targetId = lastUsed && serverClassrooms[lastUsed] ? lastUsed : Object.keys(serverClassrooms)[0] || 'default';
-      setCurrentClassroomId(targetId);
+      applyServerLayout(d.layout);
     }).catch(err => {
       console.warn('[ClassroomView] Failed to load classroom layout from server:', err);
     });
     return () => clearInterval(t);
   }, []);
+  useEffect(() => {
+    if (!socket) return undefined;
+    const handleLayoutUpdated = data => {
+      if (data?.layout) applyServerLayout(data.layout);
+    };
+    socket.on('classroom-layout-updated', handleLayoutUpdated);
+    return () => socket.off?.('classroom-layout-updated', handleLayoutUpdated);
+  }, [socket, currentClassroomId]);
+  useEffect(() => {
+    if (!socket) return undefined;
+    const handlePowerAck = data => {
+      if (!data || data.action !== 'power-on') return;
+      if (data.success) {
+        const failed = Array.isArray(data.results) ? data.results.filter(item => !item?.success) : [];
+        const missingMacCount = failed.filter(item => item?.error === 'missing_mac').length;
+        if (missingMacCount > 0) {
+          alert(`Wake-on-LAN \u5df2\u5c1d\u8bd5\u53d1\u9001\uff0c\u4f46\u6709 ${missingMacCount} \u53f0\u8bbe\u5907\u7f3a\u5c11 MAC \u5730\u5740\uff0c\u672a\u53d1\u9001\u5f00\u673a\u5305\u3002`);
+        }
+        return;
+      }
+      if (data.error === 'empty_targets') {
+        alert('\u672a\u627e\u5230\u53ef\u7528\u7684\u5f00\u673a\u76ee\u6807\u3002');
+        return;
+      }
+      const missingMacCount = Array.isArray(data.results) ? data.results.filter(item => item?.error === 'missing_mac').length : 0;
+      if (missingMacCount > 0) {
+        alert(`\u672a\u53d1\u9001 Wake-on-LAN \u5f00\u673a\u5305\uff1a${missingMacCount} \u53f0\u8bbe\u5907\u7f3a\u5c11 MAC \u5730\u5740\u3002`);
+        return;
+      }
+      if (data.error) {
+        alert(`\u5f00\u673a\u64cd\u4f5c\u5931\u8d25\uff1a${data.error}`);
+      }
+    };
+    socket.on('student:power-control:ack', handlePowerAck);
+    return () => socket.off?.('student:power-control:ack', handlePowerAck);
+  }, [socket]);
   const handleAutoImport = () => {
     setAutoImporting(true);
     fetch('/api/students').then(r => r.json()).then(d => {
@@ -1152,6 +1288,46 @@ function ClassroomView({
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   };
+  const handleCanvasMouseDown = event => {
+    if (event.button !== 0) return;
+    if (event.target?.closest?.('[data-seat-card="true"]')) return;
+    const viewport = seatCanvasViewportRef.current;
+    const canvas = seatCanvasRef.current;
+    if (!viewport || !canvas) return;
+    event.preventDefault();
+    setPowerMenu(null);
+    const canvasRect = canvas.getBoundingClientRect();
+    const start = toCanvasPointerPos(event, canvasRect, viewport);
+    const updateSelection = current => {
+      const left = Math.min(start.x, current.x);
+      const top = Math.min(start.y, current.y);
+      const width = Math.abs(current.x - start.x);
+      const height = Math.abs(current.y - start.y);
+      setSelectionBox({
+        left,
+        top,
+        width,
+        height
+      });
+      const right = left + width;
+      const bottom = top + height;
+      const ids = seats.filter(seat => {
+        const pos = getSeatCanvasPosition(seat);
+        return pos.x < right && pos.x + SEAT_CARD_WIDTH > left && pos.y < bottom && pos.y + SEAT_CARD_HEIGHT > top;
+      }).map(seat => seat.id);
+      setSelectedSeatIds(ids);
+    };
+    const onMove = moveEvent => {
+      updateSelection(toCanvasPointerPos(moveEvent, canvasRect, viewport));
+    };
+    const onUp = () => {
+      setSelectionBox(null);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
   const handleDownloadTemplate = () => {
     const content = ['# 机房座位列表模板', '# 每行格式: ip,姓名,学号,行,列,x,y', '# 行列或坐标至少提供一组，不提供时系统自动排布', '#', '# 示例', '192.168.1.101,A01,20230001,1,1,36,36', '192.168.1.101,A01,20230001,1,1', '192.168.1.102,A02,20230002,1,2', '192.168.1.103,A03,20230003,1,3', '192.168.1.104,A04,20230004,1,4', '192.168.1.105,A05,20230005,1,5', '192.168.1.106,A06,20230006,1,6', '192.168.1.201,B01,20230007,2,1', '192.168.1.202,B02,20230008,2,2', '192.168.1.203,B03,20230009,2,3'].join('\n');
     const blob = new Blob([content], {
@@ -1211,6 +1387,7 @@ function ClassroomView({
             const ip = normalizeIp(s && s.ip ? String(s.ip).trim() : '');
             const name = s && s.name ? String(s.name) : '';
             const studentId = s && s.studentId ? String(s.studentId) : '';
+            const mac = s && (s.mac || s.wakeMac || s.macAddress) ? String(s.mac || s.wakeMac || s.macAddress).trim() : '';
             const row = s && Number.isFinite(Number(s.row)) ? Math.max(1, Number(s.row)) : null;
             const col = s && Number.isFinite(Number(s.col)) ? Math.max(1, Number(s.col)) : null;
             const x = s && Number.isFinite(Number(s.x)) ? Math.max(0, Number(s.x)) : null;
@@ -1222,6 +1399,7 @@ function ClassroomView({
               ip,
               name,
               studentId,
+              mac,
               row,
               col,
               x,
@@ -1253,10 +1431,11 @@ function ClassroomView({
         const ip = normalizeIp(parts[0].trim());
         const name = parts[1] ? parts[1].trim() : '';
         const studentId = parts[2] ? parts[2].trim() : '';
-        const row = parts[3] ? parseInt(parts[3].trim(), 10) : null;
-        const col = parts[4] ? parseInt(parts[4].trim(), 10) : null;
-        const x = parts[5] ? parseFloat(parts[5].trim()) : null;
-        const y = parts[6] ? parseFloat(parts[6].trim()) : null;
+        const mac = parts[3] ? parts[3].trim() : '';
+        const row = parts[4] ? parseInt(parts[4].trim(), 10) : null;
+        const col = parts[5] ? parseInt(parts[5].trim(), 10) : null;
+        const x = parts[6] ? parseFloat(parts[6].trim()) : null;
+        const y = parts[7] ? parseFloat(parts[7].trim()) : null;
         if (!ip) {
           errors.push(`第 ${idx + 1} 行 IP 为空`);
           return;
@@ -1273,6 +1452,7 @@ function ClassroomView({
           ip,
           name,
           studentId,
+          mac,
           row: row || null,
           col: col || null,
           x: x ?? null,
@@ -1315,6 +1495,7 @@ function ClassroomView({
             ...s,
             name: item.name || s.name,
             studentId: item.studentId || s.studentId,
+            mac: item.mac || getSeatMac(s),
             row: r,
             col: c,
             x,
@@ -1326,6 +1507,7 @@ function ClassroomView({
             ip: item.ip,
             name: item.name,
             studentId: item.studentId,
+            mac: item.mac,
             row: r,
             col: c,
             x,
@@ -1362,6 +1544,7 @@ function ClassroomView({
         ip: s.ip,
         name: s.name || '',
         studentId: s.studentId || '',
+        mac: getSeatMac(s),
         row: s.row,
         col: s.col,
         x: s.x,
@@ -1374,7 +1557,7 @@ function ClassroomView({
     downloadBlob(blob, `classroom-${currentClassroom.name}-${getStamp()}.json`);
   };
   const handleExportCsv = () => {
-    const content = ['# 机房座位列表', '# 格式：ip,名称,学号,行,列,x,y', ...[...seats].sort((a, b) => a.row !== b.row ? a.row - b.row : a.col - b.col).map(s => `${s.ip},${String(s.name || '').replace(/,/g, ' ')},${String(s.studentId || '').replace(/,/g, ' ')},${s.row},${s.col},${s.x ?? ''},${s.y ?? ''}`)].join('\n');
+    const content = ['# 机房座位列表', '# 格式：ip,名称,学号,行,列,x,y', ...[...seats].sort((a, b) => a.row !== b.row ? a.row - b.row : a.col - b.col).map(s => `${s.ip},${String(s.name || '').replace(/,/g, ' ')},${String(s.studentId || '').replace(/,/g, ' ')},${String(getSeatMac(s) || '').replace(/,/g, ' ')},${s.row},${s.col},${s.x ?? ''},${s.y ?? ''}`)].join('\n');
     const blob = new Blob([content], {
       type: 'text/plain;charset=utf-8'
     });
@@ -1388,12 +1571,14 @@ function ClassroomView({
       ip: normalizeIp(addIp.trim()),
       name: addName.trim(),
       studentId: addStudentId.trim(),
+      mac: addMac.trim(),
       row: Number(addRow),
       col: Number(addCol)
     }]);
     setAddIp('');
     setAddName('');
     setAddStudentId('');
+    setAddMac('');
     setShowAddForm(false);
   };
   const handleDelete = id => saveSeats(seats.filter(s => s.id !== id));
@@ -1499,16 +1684,27 @@ function ClassroomView({
     const alerts = recentAlerts[seat.ip] || [];
     const lastAlert = alerts[alerts.length - 1];
     const screenshot = studentScreenshots[seat.ip] || null;
+    const isSelected = selectedSeatIds.includes(seat.id);
     const isDragging = dragId === seat.id;
     return /*#__PURE__*/React.createElement("div", {
       key: seat.id,
+      "data-seat-card": "true",
       onMouseDown: e => handleSeatMouseDown(e, seat),
-      onClick: () => screenshot?.dataUrl && setPreviewSeat({
-        seat,
-        screenshot
-      }),
+      onContextMenu: e => openPowerMenuForSeats(e, isSelected ? getSelectedSeats() : [seat]),
+      onClick: e => {
+        if (e.ctrlKey || e.metaKey) {
+          toggleSeatSelected(seat, true);
+          return;
+        }
+        toggleSeatSelected(seat, false);
+        if (screenshot?.dataUrl) setPreviewSeat({
+          seat,
+          screenshot
+        });
+      },
       className: `absolute overflow-hidden rounded-[20px] border cursor-grab select-none group ${getSeatTransitionClass(isDragging)} ${getSeatCardGuideClass(seat)} ${getSeatSnapIndicatorClass(seat)}
                     ${isDragging ? `opacity-85 scale-[0.98] z-20 ${getSeatDragShadowClass(isDragging)}` : 'hover:-translate-y-0.5'}
+                    ${isSelected ? 'ring-2 ring-sky-300/85 border-sky-200/80 shadow-[0_0_0_2px_rgba(125,211,252,0.22),0_22px_42px_rgba(56,189,248,0.22)]' : ''}
                     ${lastAlert ? 'ring-2 ring-amber-300/70 border-amber-200/50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_22px_40px_rgba(251,191,36,0.18)]' : isOnline ? 'ring-1 ring-emerald-300/45 bg-gradient-to-br from-emerald-300/22 via-cyan-300/16 to-white/10 border-emerald-200/35 shadow-[0_22px_40px_rgba(16,185,129,0.18)]' : 'bg-gradient-to-br from-white/14 via-white/8 to-slate-900/8 border-white/14 shadow-[0_18px_34px_rgba(15,23,42,0.18)] hover:border-sky-200/24'} ${screenshot?.dataUrl ? 'cursor-zoom-in' : ''}`,
       style: getSeatCanvasStyle(seat)
     }, screenshot?.dataUrl ? /*#__PURE__*/React.createElement("img", {
@@ -1643,6 +1839,12 @@ function ClassroomView({
     }, "-")), /*#__PURE__*/React.createElement("td", {
       className: "rounded-r-2xl px-2 sm:px-3 py-3 text-center"
     }, /*#__PURE__*/React.createElement("button", {
+      onClick: e => openPowerMenuForSeats(e, [seat]),
+      className: "mr-3 text-slate-400 hover:text-sky-300 transition-colors text-[10px] sm:text-xs",
+      title: "\u7535\u6E90\u63A7\u5236"
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fas fa-sliders"
+    })), /*#__PURE__*/React.createElement("button", {
       onClick: () => handleDelete(seat.id),
       className: "text-slate-400 hover:text-red-400 transition-colors text-[10px] sm:text-xs",
       title: "\u5220\u9664"
@@ -1665,11 +1867,25 @@ function ClassroomView({
         width: `${canvasWidth}px`,
         height: `${canvasHeight}px`,
         minWidth: `${canvasWidth}px`
+      },
+      onMouseDown: handleCanvasMouseDown,
+      onContextMenu: event => {
+        if (event.target?.closest?.('[data-seat-card="true"]')) return;
+        const targets = getSelectedSeats();
+        if (targets.length > 0) openPowerMenuForSeats(event, targets);
       }
     }, /*#__PURE__*/React.createElement("div", {
       className: `pointer-events-none absolute inset-0 rounded-[24px] ${getCanvasGridClass()}`,
       style: getCanvasGridStyle()
-    }), seats.map(renderSeat)));
+    }), seats.map(renderSeat), selectionBox && /*#__PURE__*/React.createElement("div", {
+      className: "pointer-events-none absolute rounded-xl border border-sky-200/80 bg-sky-300/18 shadow-[0_0_0_1px_rgba(125,211,252,0.18)]",
+      style: {
+        left: `${selectionBox.left}px`,
+        top: `${selectionBox.top}px`,
+        width: `${selectionBox.width}px`,
+        height: `${selectionBox.height}px`
+      }
+    })));
   };
   const rootClassName = standalone ? 'teacher-shell-page relative flex h-full overflow-hidden p-2' : `teacher-shell-page fixed inset-0 ${window.__getTeacherLayerClass?.('overlay') || 'z-[10000]'} flex items-center justify-center overflow-hidden bg-black/55 p-2`;
   const shellClassName = standalone ? 'teacher-glass-dark teacher-glass-enter teacher-borderless relative flex h-full w-full flex-col overflow-hidden rounded-[24px]' : 'teacher-glass-dark teacher-glass-enter teacher-borderless relative flex h-[94vh] w-[97vw] max-w-[1500px] flex-col overflow-hidden rounded-[28px]';
@@ -1827,6 +2043,11 @@ function ClassroomView({
     onChange: e => setAddStudentId(e.target.value),
     placeholder: "\u5B66\u53F7",
     className: "hidden w-28 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-sm text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:block"
+  }), /*#__PURE__*/React.createElement("input", {
+    value: addMac,
+    onChange: e => setAddMac(e.target.value),
+    placeholder: "MAC",
+    className: "hidden w-36 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-sm text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 md:block"
   }), /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-slate-300 sm:text-sm"
   }, "\u884C"), /*#__PURE__*/React.createElement("input", {
@@ -1947,7 +2168,60 @@ function ClassroomView({
     className: "fas fa-xmark"
   }))), /*#__PURE__*/React.createElement("div", {
     className: "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-right text-sm text-slate-200"
-  }, formatCapturedDateTime(previewSeat.screenshot.capturedAt) ? `截图时间 ${formatCapturedDateTime(previewSeat.screenshot.capturedAt)}` : ''))), document.body), showClassroomMenu && createPortal(/*#__PURE__*/React.createElement("div", {
+  }, formatCapturedDateTime(previewSeat.screenshot.capturedAt) ? `截图时间 ${formatCapturedDateTime(previewSeat.screenshot.capturedAt)}` : ''))), document.body), powerMenu && createPortal(/*#__PURE__*/React.createElement("div", {
+    ref: powerMenuPopupRef,
+    className: `teacher-glass-dark rounded-[18px] py-2 ${window.__getTeacherLayerClass?.('popup') || 'z-[10040]'} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`,
+    style: getPowerMenuStyle(),
+    onMouseDown: e => e.stopPropagation(),
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400"
+  }, "\u5DF2\u9009 ", powerMenu.seatIds.length, " \u53F0"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => openSeatDetail(seats.find(seat => seat.id === powerMenu.seatIds[0])),
+    className: "flex w-full items-center px-4 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-circle-info mr-2 w-5 text-center"
+  }), "\u67E5\u770B\u8BE6\u7EC6\u4FE1\u606F"), /*#__PURE__*/React.createElement("div", {
+    className: "my-1 h-px bg-white/10 mx-2"
+  }), POWER_CONTROL_ACTIONS.map(item => /*#__PURE__*/React.createElement("button", {
+    key: item.action,
+    onClick: () => sendPowerControl(item.action, seats.filter(seat => powerMenu.seatIds.includes(seat.id))),
+    className: "flex w-full items-center px-4 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: `fas ${item.icon} mr-2 w-5 text-center`
+  }), item.label))), document.body), detailSeat && createPortal(/*#__PURE__*/React.createElement("div", {
+    className: `fixed inset-0 ${window.__getTeacherLayerClass?.('modal') || 'z-[10020]'} flex items-center justify-center bg-black/65 p-6 backdrop-blur-sm`,
+    onClick: () => setDetailSeat(null)
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "teacher-glass-dark w-[92vw] max-w-lg rounded-[28px] border border-white/14 p-6 shadow-[0_28px_80px_rgba(2,6,23,0.45)]",
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mb-5 flex items-start justify-between gap-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mb-2 inline-flex items-center gap-2 rounded-full border border-sky-200/20 bg-sky-300/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-100"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-desktop"
+  }), '\u8bbe\u5907\u8be6\u60c5'), /*#__PURE__*/React.createElement("h3", {
+    className: "truncate text-xl font-black text-white"
+  }, detailSeat.name || '\u672a\u547d\u540d\u8bbe\u5907'), /*#__PURE__*/React.createElement("p", {
+    className: "mt-1 text-sm text-slate-300"
+  }, onlineIPs.includes(detailSeat.ip) ? '\u5728\u7ebf' : '\u79bb\u7ebf')), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setDetailSeat(null),
+    className: "flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-white/8 text-white/80 hover:bg-white/15"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-xmark"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid gap-3 text-sm sm:grid-cols-2"
+  }, [['IP \u5730\u5740', detailSeat.ip || '-'], ['MAC \u5730\u5740', getSeatMac(detailSeat) || '-'], ['\u8bbe\u5907\u540d\u79f0', detailSeat.name || '-'], ['\u5b66\u53f7', detailSeat.studentId || '-'], ['\u5ea7\u4f4d\u884c\u5217', `${detailSeat.row || '-'} \u884c / ${detailSeat.col || '-'} \u5217`], ['\u5728\u7ebf\u72b6\u6001', onlineIPs.includes(detailSeat.ip) ? '\u5728\u7ebf' : '\u79bb\u7ebf']].map(([label, value]) => /*#__PURE__*/React.createElement("div", {
+    key: label,
+    className: "rounded-2xl border border-white/10 bg-white/8 px-4 py-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400"
+  }, label), /*#__PURE__*/React.createElement("div", {
+    className: "break-all font-mono text-slate-100"
+  }, value)))))), document.body), showClassroomMenu && createPortal(/*#__PURE__*/React.createElement("div", {
     ref: classroomMenuPopupRef,
     className: `teacher-glass-dark rounded-[22px] py-2 ${window.__getTeacherLayerClass?.('popup') || 'z-[10040]'} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`,
     style: getPopupStyle(classroomMenuRef, {

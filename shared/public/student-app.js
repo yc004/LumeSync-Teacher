@@ -23,6 +23,37 @@ const normalizeMonitorIntervalSec = (value) => {
 
 const getStudentBridge = () => window.studentHost || window.electronAPI || null;
 
+const executePowerControl = async (action) => {
+    const bridge = getStudentBridge();
+    if (!bridge) throw new Error('student native bridge unavailable');
+    if (typeof bridge.powerControl === 'function') {
+        return await bridge.powerControl({ action });
+    }
+    if (action === 'shutdown' && typeof bridge.shutdown === 'function') {
+        return await bridge.shutdown();
+    }
+    if (action === 'restart' && typeof bridge.restart === 'function') {
+        return await bridge.restart();
+    }
+    throw new Error('student power control is not supported by this client');
+};
+
+const reportDeviceInfo = async (socket) => {
+    const bridge = getStudentBridge();
+    if (!socket || !bridge || typeof bridge.getDeviceInfo !== 'function') return;
+    try {
+        const info = await bridge.getDeviceInfo();
+        if (!info || (!info.mac && !info.deviceName)) return;
+        socket.emit('student:device-info', {
+            mac: info.mac || '',
+            deviceName: info.deviceName || '',
+            clientId: info.clientId || '',
+        });
+    } catch (err) {
+        console.warn('[student] Failed to report device info:', err);
+    }
+};
+
 const getSessionAuth = async () => {
     const bridge = getStudentBridge();
     if (!bridge) return null;
@@ -258,6 +289,7 @@ function StudentApp() {
                 setInitialSlideIndex(nextSlide);
                 setCurrentSlide(nextSlide);
                 setRoleAssigned(true);
+                reportDeviceInfo(socket);
                 if (data.currentCourseId) {
                     window.electronAPI?.classStarted?.({ forceFullscreen: data.hostSettings?.forceFullscreen ?? true });
                     loadCourseById(data.currentCourseId, catalog, socket);
@@ -302,6 +334,25 @@ function StudentApp() {
 
             socket.on('set-admin-password', (data) => {
                 window.electronAPI?.setAdminPassword?.(data.hash);
+            });
+
+            socket.on('student:power-control', async (data) => {
+                const action = String(data?.action || '');
+                let accepted = false;
+                let error = '';
+                try {
+                    const result = await executePowerControl(action);
+                    accepted = result?.success !== false;
+                    error = result?.error || '';
+                } catch (err) {
+                    error = err?.message || 'power control failed';
+                }
+                socket.emit('student:power-control:client-ack', {
+                    requestId: data?.requestId || '',
+                    action,
+                    accepted,
+                    error
+                });
             });
         })();
 
@@ -391,3 +442,4 @@ const bootStudentApp = () => {
 };
 
 bootStudentApp();
+

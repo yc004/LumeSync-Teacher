@@ -721,6 +721,11 @@ class TeacherShellApp {
     }
 
     switch (message) {
+      case WM_NCCALCSIZE:
+        if (wParam == TRUE) {
+          return 0;
+        }
+        return DefWindowProcW(hwnd_, message, wParam, lParam);
       case WM_CREATE:
         InitializeTrayIcon();
         InitializeWebView();

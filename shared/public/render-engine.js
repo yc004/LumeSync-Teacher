@@ -998,11 +998,10 @@ function SyncClassroom({
       const baseHeight = 720;
       const scaleW = availableWidth / baseWidth;
       const scaleH = availableHeight / baseHeight;
-      const nextScaleX = Math.max(Math.min(scaleW, 1.2), 0.6);
-      const nextScaleY = Math.max(Math.min(scaleH, 1.2), 0.6);
+      const nextScale = Math.max(Math.min(Math.min(scaleW, scaleH), 1.2), 0.6);
       setStageScale({
-        x: nextScaleX,
-        y: nextScaleY
+        x: nextScale,
+        y: nextScale
       });
     };
     const ro = new ResizeObserver(updateScale);

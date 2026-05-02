@@ -3,13 +3,131 @@
 // 功能：显示所有学生座位，支持命名、拖拽排列、在线状态
 // 布局和命名持久化到 localStorage，支持多个班级（表）
 // ========================================================
+const areSeatCardPropsEqual = (prev, next) => (
+    prev.seat === next.seat
+    && prev.position.x === next.position.x
+    && prev.position.y === next.position.y
+    && prev.coordLabel === next.coordLabel
+    && prev.isOnline === next.isOnline
+    && prev.isSelected === next.isSelected
+    && prev.isDragging === next.isDragging
+    && prev.hasSnapshot === next.hasSnapshot
+    && prev.lastAlertType === next.lastAlertType
+    && prev.capturedAtLabel === next.capturedAtLabel
+    && prev.dropPulseKey === next.dropPulseKey
+    && prev.monitorEnabled === next.monitorEnabled
+);
+
+const SeatCanvasCard = React.memo(function SeatCanvasCard({
+    seat,
+    position,
+    coordLabel,
+    isOnline,
+    isSelected,
+    isDragging,
+    hasSnapshot,
+    lastAlertType,
+    lastAlertLabel,
+    lastAlertColor,
+    lastAlertIcon,
+    screenshot,
+    capturedAtLabel,
+    monitorEnabled,
+    dropPulseKey,
+    onMouseDown,
+    onContextMenu,
+    onCardClick,
+    onDelete,
+    onStartEdit,
+}) {
+    const pulseRef = useRef(null);
+
+    useEffect(() => {
+        if (!dropPulseKey || !pulseRef.current) return;
+        pulseRef.current.animate([
+            { transform: 'scale(1)' },
+            { transform: 'scale(1.018)' },
+            { transform: 'scale(1)' }
+        ], {
+            duration: 180,
+            easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+        });
+    }, [dropPulseKey]);
+
+    return (
+        <div
+            data-seat-card="true"
+            onMouseDown={onMouseDown}
+            onContextMenu={onContextMenu}
+            onClick={onCardClick}
+            className={`absolute left-0 top-0 select-none will-change-transform ${hasSnapshot ? 'cursor-zoom-in' : 'cursor-grab active:cursor-grabbing'}`}
+            style={{
+                width: '150px',
+                height: '100px',
+                transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
+                zIndex: isDragging ? 30 : isSelected ? 20 : 10,
+                transition: isDragging ? 'none' : 'transform 160ms ease, filter 160ms ease'
+            }}
+        >
+            <div
+                ref={pulseRef}
+                className={`group relative h-full overflow-hidden rounded-xl border bg-slate-100 ${isDragging ? 'scale-[0.985]' : 'hover:-translate-y-0.5'} ${isSelected ? 'border-blue-500 ring-2 ring-blue-300' : lastAlertType ? 'border-amber-300 ring-2 ring-amber-200' : isOnline ? 'border-emerald-300' : 'border-slate-300'}`}
+            >
+                {hasSnapshot ? (
+                    <img src={screenshot.dataUrl} alt={`${seat.name || seat.ip} screenshot`} className="absolute inset-0 h-full w-full object-cover" />
+                ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-100 text-slate-300">
+                        <i className="fas fa-desktop text-2xl"></i>
+                    </div>
+                )}
+
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/72 via-slate-950/8 to-slate-950/18"></div>
+
+                <div className="absolute left-2 top-2 flex items-center gap-1.5 rounded-full bg-slate-950/48 px-2 py-1 text-[9px] font-bold text-white backdrop-blur-sm">
+                    <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-400' : 'bg-slate-400'}`}></span>
+                    <span>{coordLabel}</span>
+                </div>
+
+                {lastAlertType && (
+                    <div className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-[10px] text-white shadow-sm" title={lastAlertLabel}>
+                        <i className={`fas ${lastAlertIcon}`}></i>
+                    </div>
+                )}
+
+                <button
+                    onClick={(event) => { event.stopPropagation(); onDelete?.(); }}
+                    className="absolute right-2 top-2 z-20 hidden h-6 w-6 items-center justify-center rounded-full bg-red-500 text-[10px] text-white shadow-sm transition-colors hover:bg-red-600 group-hover:flex"
+                    title="\u5220\u9664\u5ea7\u4f4d"
+                >
+                    <i className="fas fa-xmark text-[10px]"></i>
+                </button>
+
+                <div className="absolute inset-x-0 bottom-0 p-2 text-white">
+                    <div
+                        className="truncate cursor-text text-[12px] font-black leading-tight drop-shadow"
+                        title={`${seat.name || '\u672a\u547d\u540d\u8bbe\u5907'}\n${seat.studentId ? '\u5b66\u53f7: ' + seat.studentId : ''}\n${seat.ip}`}
+                        onDoubleClick={() => onStartEdit(seat)}
+                    >
+                        {seat.name || <span className="italic text-white/75">\u672a\u547d\u540d\u8bbe\u5907</span>}
+                    </div>
+                    <div className="mt-0.5 flex min-w-0 items-center justify-between gap-2">
+                        <span className="truncate font-mono text-[9px] text-white/78">{seat.ip}</span>
+                        <span className="shrink-0 text-[8px] text-white/62">{hasSnapshot ? capturedAtLabel : (monitorEnabled ? '\u7b49\u5f85\u622a\u56fe' : '\u76d1\u63a7\u5173\u95ed')}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}, areSeatCardPropsEqual);
+
 function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, monitorEnabled = false, monitorIntervalSec = 1, podiumAtTop, onPodiumAtTopChange, standalone = false }) {
     const STORAGE_KEY = 'classroom-layouts-v1';
     const podiumOnTop = typeof podiumAtTop === 'boolean' ? podiumAtTop : true;
-    const SEAT_CARD_WIDTH = 190;
-    const SEAT_CARD_HEIGHT = Math.round(SEAT_CARD_WIDTH * 9 / 16);
-    const SEAT_CARD_GAP = 20;
-    const CANVAS_PADDING = 36;
+    const GRID_SIZE = 50;
+    const SEAT_CARD_WIDTH = GRID_SIZE * 3;
+    const SEAT_CARD_HEIGHT = GRID_SIZE * 2;
+    const SEAT_CARD_GAP = GRID_SIZE;
+    const CANVAS_PADDING = GRID_SIZE;
 
     // 多班级状态管理
     const [classrooms, setClassrooms] = useState(() => {
@@ -64,6 +182,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
     const [editStudentId, setEditStudentId] = useState('');
     const [dragId, setDragId] = useState(null);
     const [dragPreviewPos, setDragPreviewPos] = useState(null);
+    const [dropPulse, setDropPulse] = useState(null);
     const [addRow, setAddRow] = useState(1);
     const [addCol, setAddCol] = useState(1);
     const [addIp, setAddIp] = useState('');
@@ -114,8 +233,6 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
     const maxRow = seats.reduce((m, s) => Math.max(m, s.row), 0);
     const maxCol = seats.reduce((m, s) => Math.max(m, s.col), 0);
     const layoutCols = Math.max(maxCol, 6);
-    const GRID_SNAP_THRESHOLD = 16;
-
     const rowColToCanvasPos = (row, col) => {
         const safeRow = Math.max(1, Number(row) || 1);
         const safeCol = Math.max(1, Number(col) || 1);
@@ -129,21 +246,17 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
         col: Math.max(1, Math.round((Math.max(0, x - CANVAS_PADDING)) / (SEAT_CARD_WIDTH + SEAT_CARD_GAP)) + 1)
     });
     const getSnappedCanvasPos = (x, y) => {
-        const grid = canvasPosToRowCol(x, y);
-        const snapped = rowColToCanvasPos(grid.row, grid.col);
-        const dx = Math.abs(snapped.x - x);
-        const dy = Math.abs(snapped.y - y);
-        if (dx <= GRID_SNAP_THRESHOLD) x = snapped.x;
-        if (dy <= GRID_SNAP_THRESHOLD) y = snapped.y;
-        return { x, y, row: grid.row, col: grid.col, snappedX: dx <= GRID_SNAP_THRESHOLD, snappedY: dy <= GRID_SNAP_THRESHOLD };
+        // 关键算法：所有自由拖拽坐标都按 50px 基础网格强制吸附。
+        const snappedX = CANVAS_PADDING + Math.round((x - CANVAS_PADDING) / GRID_SIZE) * GRID_SIZE;
+        const snappedY = CANVAS_PADDING + Math.round((y - CANVAS_PADDING) / GRID_SIZE) * GRID_SIZE;
+        const grid = canvasPosToRowCol(snappedX, snappedY);
+        return { x: snappedX, y: snappedY, row: grid.row, col: grid.col, snappedX: true, snappedY: true };
     };
     const getGridOverlayStyle = (active = false) => {
-        const majorAlpha = active ? 0.16 : 0.08;
-        const minorAlpha = active ? 0.1 : 0.05;
+        const majorAlpha = active ? 0.18 : 0.1;
+        const minorAlpha = active ? 0.12 : 0.07;
         const majorW = SEAT_CARD_WIDTH + SEAT_CARD_GAP;
         const majorH = SEAT_CARD_HEIGHT + SEAT_CARD_GAP;
-        const minorW = Math.max(12, Math.round(majorW / 2));
-        const minorH = Math.max(10, Math.round(majorH / 2));
         return {
             backgroundImage: [
                 `linear-gradient(to right, rgba(125,211,252,${minorAlpha}) 1px, transparent 1px)`,
@@ -152,8 +265,8 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                 `linear-gradient(to bottom, rgba(125,211,252,${majorAlpha}) 1px, transparent 1px)`
             ].join(', '),
             backgroundSize: [
-                `${minorW}px ${minorH}px`,
-                `${minorW}px ${minorH}px`,
+                `${GRID_SIZE}px ${GRID_SIZE}px`,
+                `${GRID_SIZE}px ${GRID_SIZE}px`,
                 `${majorW}px ${majorH}px`,
                 `${majorW}px ${majorH}px`
             ].join(', '),
@@ -165,14 +278,6 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
             ].join(', ')
         };
     };
-    const isSeatSnapped = (seat) => {
-        const pos = dragPreviewPos && dragPreviewPos.id === seat.id ? dragPreviewPos : getSeatCanvasPosition(seat);
-        const snapped = getSnappedCanvasPos(pos.x, pos.y);
-        return snapped.snappedX || snapped.snappedY;
-    };
-    const getSeatTransitionClass = (dragging) => dragging ? 'transition-none' : 'transition-[transform,box-shadow,border-color,opacity] duration-150';
-    const getSeatSnapIndicatorClass = (seat) => isSeatSnapped(seat) ? 'ring-2 ring-sky-300/45' : '';
-    const getSeatDragShadowClass = (dragging) => dragging ? 'shadow-[0_24px_48px_rgba(56,189,248,0.22)]' : '';
     const getSeatPreviewPos = (seat) => dragPreviewPos && dragPreviewPos.id === seat.id ? dragPreviewPos : getSeatCanvasPosition(seat);
     const getSeatRenderPos = (seat) => {
         const pos = getSeatPreviewPos(seat);
@@ -197,17 +302,8 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
         const { canvasWidth, canvasHeight } = getCanvasMetrics();
         return { canvasWidth, canvasHeight };
     };
-    const getCanvasGridClass = () => dragId ? 'opacity-100' : 'opacity-70';
+    const getCanvasGridClass = () => dragId ? 'opacity-100' : 'opacity-75';
     const getCanvasGridStyle = () => getGridOverlayStyle(Boolean(dragId));
-    const getSeatCanvasStyle = (seat) => {
-        const pos = getSeatRenderPos(seat);
-        return {
-            left: `${pos.x}px`,
-            top: `${pos.y}px`,
-            width: `${SEAT_CARD_WIDTH}px`,
-            height: `${SEAT_CARD_HEIGHT}px`
-        };
-    };
     const getSeatGridCoords = (seat) => {
         const pos = getSeatRenderPos(seat);
         return canvasPosToRowCol(pos.x, pos.y);
@@ -226,42 +322,58 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
         return { x: snapped.x, y: snapped.y };
     };
     const getCanvasClamp = (canvas) => ({
-        maxX: Math.max(0, canvas.clientWidth - SEAT_CARD_WIDTH),
-        maxY: Math.max(0, canvas.clientHeight - SEAT_CARD_HEIGHT)
+        minX: CANVAS_PADDING,
+        minY: CANVAS_PADDING,
+        maxX: Math.max(CANVAS_PADDING, canvas.clientWidth - SEAT_CARD_WIDTH - CANVAS_PADDING),
+        maxY: Math.max(CANVAS_PADDING, canvas.clientHeight - SEAT_CARD_HEIGHT - CANVAS_PADDING)
     });
     const clampSeatPos = (x, y, canvas) => {
-        const { maxX, maxY } = getCanvasClamp(canvas);
+        const { minX, minY, maxX, maxY } = getCanvasClamp(canvas);
         return {
-            x: Math.min(maxX, Math.max(0, x)),
-            y: Math.min(maxY, Math.max(0, y))
+            x: Math.min(maxX, Math.max(minX, x)),
+            y: Math.min(maxY, Math.max(minY, y))
         };
     };
-    const toCanvasPointerPos = (event, canvasRect, viewport) => ({
-        x: event.clientX - canvasRect.left + viewport.scrollLeft,
-        y: event.clientY - canvasRect.top + viewport.scrollTop
-    });
+    const getCanvasPointerScale = (canvas, canvasRect) => {
+        const scaleX = canvasRect.width > 0 ? canvasRect.width / canvas.clientWidth : 1;
+        const scaleY = canvasRect.height > 0 ? canvasRect.height / canvas.clientHeight : 1;
+        return {
+            scaleX: scaleX || 1,
+            scaleY: scaleY || 1
+        };
+    };
+    const toCanvasPointerPos = (event, canvasRect, viewport, canvas) => {
+        const { scaleX, scaleY } = getCanvasPointerScale(canvas, canvasRect);
+        return {
+            // 关键算法：鼠标在缩放后的视口里移动时，先除以 scale，
+            // 再转回未缩放的画布坐标，保证拖拽和框选与光标对齐。
+            x: (event.clientX - canvasRect.left) / scaleX + viewport.scrollLeft,
+            y: (event.clientY - canvasRect.top) / scaleY + viewport.scrollTop
+        };
+    };
     const toSeatDragPos = (pointer, offsetX, offsetY, canvas) => clampSeatPos(pointer.x - offsetX, pointer.y - offsetY, canvas);
     const getDragMoved = (nextX, nextY, startPos) => Math.abs(nextX - startPos.x) > 2 || Math.abs(nextY - startPos.y) > 2;
     const queueSeatPreviewUpdate = (setPreview, next) => setPreview(next);
     const getSeatDragStart = (seat) => getSeatCanvasPosition(seat);
     const getSeatDragOffset = (pointer, startPos) => ({ offsetX: pointer.x - startPos.x, offsetY: pointer.y - startPos.y });
-    const getCanvasScrollPointer = (event, canvasRect, viewport) => toCanvasPointerPos(event, canvasRect, viewport);
+    const getCanvasScrollPointer = (event, canvasRect, viewport, canvas) => toCanvasPointerPos(event, canvasRect, viewport, canvas);
     const getSeatMovePoint = (moveEvent, canvasRect, viewport, offsetX, offsetY, canvas) => {
-        const pointer = getCanvasScrollPointer(moveEvent, canvasRect, viewport);
+        const pointer = getCanvasScrollPointer(moveEvent, canvasRect, viewport, canvas);
         return toSeatDragPos(pointer, offsetX, offsetY, canvas);
     };
     const getSeatDropState = (lastPos) => getSeatFinalDrop(lastPos.x, lastPos.y);
     const getSeatPreviewState = (lastPos) => getSeatPreviewUpdate(lastPos.x, lastPos.y);
     const setSeatPreviewState = (seatId, setPreview, lastPos) => queueSeatPreviewUpdate(setPreview, { id: seatId, ...getSeatPreviewState(lastPos) });
-    const getSeatCardGuideClass = (seat) => isSeatSnapped(seat) ? 'before:absolute before:inset-0 before:border before:border-sky-300/35 before:rounded-[20px] before:pointer-events-none' : '';
     const getSeatCanvasPosition = (seat) => {
         if (Number.isFinite(Number(seat?.x)) && Number.isFinite(Number(seat?.y))) {
-            return { x: Math.max(0, Number(seat.x)), y: Math.max(0, Number(seat.y)) };
+            const snapped = getSnappedCanvasPos(Math.max(CANVAS_PADDING, Number(seat.x)), Math.max(CANVAS_PADDING, Number(seat.y)));
+            return { x: snapped.x, y: snapped.y };
         }
         return rowColToCanvasPos(seat?.row, seat?.col);
     };
     const withSeatCanvasPosition = (seat) => {
-        const pos = getSeatCanvasPosition(seat);
+        const basePos = getSeatCanvasPosition(seat);
+        const pos = getSnappedCanvasPos(basePos.x, basePos.y);
         const grid = canvasPosToRowCol(pos.x, pos.y);
         return { ...seat, x: pos.x, y: pos.y, row: grid.row, col: grid.col };
     };
@@ -576,7 +688,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
         event.preventDefault();
         const startPos = getSeatDragStart(seat);
         const canvasRect = canvas.getBoundingClientRect();
-        const startPointer = getCanvasScrollPointer(event, canvasRect, viewport);
+        const startPointer = getCanvasScrollPointer(event, canvasRect, viewport, canvas);
         const { offsetX, offsetY } = getSeatDragOffset(startPointer, startPos);
 
         setDragId(seat.id);
@@ -613,7 +725,10 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
             }
             if (moved) {
                 const drop = getSeatDropState(lastPos);
+                // 关键算法：拖拽结束时只把当前 seat 的 x/y 写回数组，
+                // 避免整张画布重新生成一套新对象。
                 saveSeats(seats.map(s => s.id === seat.id ? { ...s, x: drop.x, y: drop.y, row: drop.row, col: drop.col } : s));
+                setDropPulse({ id: seat.id, key: Date.now() });
             }
             setDragId(null);
             setDragPreviewPos(null);
@@ -631,7 +746,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
         event.preventDefault();
         setPowerMenu(null);
         const canvasRect = canvas.getBoundingClientRect();
-        const start = toCanvasPointerPos(event, canvasRect, viewport);
+        const start = toCanvasPointerPos(event, canvasRect, viewport, canvas);
         const updateSelection = (current) => {
             const left = Math.min(start.x, current.x);
             const top = Math.min(start.y, current.y);
@@ -647,7 +762,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
             setSelectedSeatIds(ids);
         };
         const onMove = (moveEvent) => {
-            updateSelection(toCanvasPointerPos(moveEvent, canvasRect, viewport));
+            updateSelection(toCanvasPointerPos(moveEvent, canvasRect, viewport, canvas));
         };
         const onUp = () => {
             setSelectionBox(null);
@@ -927,6 +1042,9 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
         return d ? d.toLocaleString('zh-CN', { hour12: false }) : '';
     };
 
+    const selectedSeatIdSet = useMemo(() => new Set(selectedSeatIds), [selectedSeatIds]);
+    const onlineIpSet = useMemo(() => new Set(onlineIPs), [onlineIPs]);
+
     const renderSeat = (seat) => {
         const isOnline = onlineIPs.includes(seat.ip);
         const alerts = recentAlerts[seat.ip] || [];
@@ -961,19 +1079,19 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                 ) : (
                     <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 text-center text-[10px] text-slate-400 sm:text-[11px]">
                         <div>
-                            <i className="fas fa-desktop mb-2 block text-lg text-slate-500"></i>
+                            <i className="fas fa-desktop mb-2 block text-lg text-slate-300"></i>
                             <div>{monitorEnabled ? '等待截图…' : '监控已关闭'}</div>
                         </div>
                     </div>
                 )}
 
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/45"></div>
-                <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/10"></div>
+                <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-slate-900/5"></div>
                 <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/50 to-transparent"></div>
 
                 <button
                     onClick={() => handleDelete(seat.id)}
-                    className="absolute top-2 right-2 z-20 hidden h-6 w-6 items-center justify-center rounded-full border border-white/15 bg-black/35 text-[10px] text-white/85 backdrop-blur-sm transition-colors hover:bg-red-500 hover:text-white group-hover:flex"
+                    className="absolute top-2 right-2 z-20 hidden h-6 w-6 items-center justify-center rounded-full border border-red-100 bg-white text-[10px] text-red-500 shadow-sm transition-colors hover:bg-red-500 hover:text-white group-hover:flex"
                 >
                     <i className="fas fa-xmark text-[10px]"></i>
                 </button>
@@ -982,10 +1100,10 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                     <div className="min-w-0">
                         <div className={`mb-1 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] backdrop-blur-sm ${
                             isOnline
-                                ? 'border-emerald-200/35 bg-emerald-300/16 text-emerald-100'
-                                : 'border-white/12 bg-black/25 text-slate-200'
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                : 'border-slate-200 bg-slate-50 text-slate-500'
                         }`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.8)]' : 'bg-slate-400'}`}></span>
+                            <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
                             {isOnline ? 'ONLINE' : 'OFFLINE'}
                         </div>
                         <div
@@ -993,21 +1111,21 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                             title={`${seat.name || '未命名'}\n${seat.studentId ? '学号: ' + seat.studentId : ''}\n${seat.ip}`}
                             onDoubleClick={() => startEdit(seat)}
                         >
-                            {seat.name || <span className="italic text-slate-300">双击命名</span>}
+                            {seat.name || <span className="italic text-slate-400">双击命名</span>}
                         </div>
                         {seat.studentId && (
-                            <div className="mt-0.5 truncate text-[9px] font-medium text-sky-100/95 drop-shadow">
+                            <div className="mt-0.5 truncate text-[9px] font-medium text-blue-600">
                                 #{seat.studentId}
                             </div>
                         )}
                     </div>
-                    <div className="rounded-full border border-white/12 bg-black/30 px-2 py-0.5 text-[9px] font-mono text-white/85 backdrop-blur-sm">
+                    <div className="rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[9px] font-mono text-slate-500 shadow-sm">
                         {getSeatCoordLabel(seat)}
                     </div>
                 </div>
 
                 <div className="absolute left-2 right-2 bottom-2 z-10 space-y-1.5">
-                    <div className="truncate rounded-xl border border-white/10 bg-black/35 px-2 py-1.5 font-mono text-[8px] text-white/90 backdrop-blur-sm sm:text-[9px]">
+                    <div className="truncate rounded-xl border border-slate-200 bg-white/90 px-2 py-1.5 font-mono text-[8px] text-slate-600 shadow-sm sm:text-[9px]">
                         {seat.ip}
                     </div>
                     <div className="flex items-center justify-between gap-2">
@@ -1017,7 +1135,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                                 <span className="truncate">{alertIcons[lastAlert.type].label}</span>
                             </div>
                         ) : (
-                            <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[8px] text-slate-200 backdrop-blur-sm sm:text-[9px]">
+                            <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-[8px] text-slate-500 shadow-sm sm:text-[9px]">
                                 <i className="fas fa-wave-square"></i>
                                 <span>{screenshot?.capturedAt ? '截图已更新' : '状态正常'}</span>
                             </div>
@@ -1031,8 +1149,49 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
         );
     };
 
+    const renderSeatCard = (seat) => {
+        const isOnline = onlineIpSet.has(seat.ip);
+        const alerts = recentAlerts[seat.ip] || [];
+        const lastAlert = alerts[alerts.length - 1];
+        const screenshot = studentScreenshots[seat.ip] || null;
+        const isSelected = selectedSeatIdSet.has(seat.id);
+        const isDragging = dragId === seat.id;
+        const pos = getSeatRenderPos(seat);
+        const coordLabel = getSeatCoordLabel(seat);
+        const alertMeta = lastAlert && alertIcons[lastAlert.type] ? alertIcons[lastAlert.type] : null;
+        return (
+            <SeatCanvasCard
+                key={seat.id}
+                seat={seat}
+                position={pos}
+                coordLabel={coordLabel}
+                isOnline={isOnline}
+                isSelected={isSelected}
+                isDragging={isDragging}
+                hasSnapshot={Boolean(screenshot?.dataUrl)}
+                lastAlertType={lastAlert?.type || ''}
+                lastAlertLabel={alertMeta?.label || ''}
+                lastAlertColor={alertMeta?.color || ''}
+                lastAlertIcon={alertMeta?.icon || ''}
+                screenshot={screenshot}
+                capturedAtLabel={formatCapturedTime(screenshot?.capturedAt)}
+                monitorEnabled={monitorEnabled}
+                dropPulseKey={dropPulse?.id === seat.id ? dropPulse.key : 0}
+                onMouseDown={e => handleSeatMouseDown(e, seat)}
+                onContextMenu={e => openPowerMenuForSeats(e, isSelected ? getSelectedSeats() : [seat])}
+                onCardClick={(e) => {
+                    if (e.ctrlKey || e.metaKey) { toggleSeatSelected(seat, true); return; }
+                    toggleSeatSelected(seat, false);
+                    if (screenshot?.dataUrl) setPreviewSeat({ seat, screenshot });
+                }}
+                onDelete={() => handleDelete(seat.id)}
+                onStartEdit={startEdit}
+            />
+        );
+    };
+
     const renderList = () => (
-        <div className="teacher-glass-light flex-1 overflow-hidden rounded-[28px] border border-white/10">
+        <div className="flex-1 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
             <div className="h-full overflow-auto px-3 py-3 sm:px-5 sm:py-4">
                 <table className="w-full min-w-[700px] text-sm text-left border-separate border-spacing-y-2">
                 <thead>
@@ -1107,7 +1266,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
         const { canvasWidth, canvasHeight } = getCanvasGuides();
 
         return (
-            <div ref={seatCanvasViewportRef} className="min-h-0 flex-1 overflow-auto">
+            <div ref={seatCanvasViewportRef} className="min-h-0 flex-1 overflow-auto rounded-[16px]">
                 <div
                     ref={seatCanvasRef}
                     className="relative mx-auto"
@@ -1120,10 +1279,15 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                     }}
                 >
                     <div
-                        className={`pointer-events-none absolute inset-0 rounded-[24px] ${getCanvasGridClass()}`}
-                        style={getCanvasGridStyle()}
+                        className={`pointer-events-none absolute inset-0 rounded-[16px] ${getCanvasGridClass()}`}
+                        style={{
+                            ...getCanvasGridStyle(),
+                            backgroundColor: 'transparent',
+                            backgroundImage: getCanvasGridStyle().backgroundImage
+                        }}
                     />
-                    {seats.map(renderSeat)}
+                    <div className="pointer-events-none absolute inset-0 rounded-[16px] shadow-[inset_0_0_0_1px_rgba(226,232,240,0.75)]"></div>
+                    {seats.map(renderSeatCard)}
                     {selectionBox && (
                         <div
                             className="pointer-events-none absolute rounded-xl border border-sky-200/80 bg-sky-300/18 shadow-[0_0_0_1px_rgba(125,211,252,0.18)]"
@@ -1141,200 +1305,92 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
     };
 
     const rootClassName = standalone
-        ? 'teacher-shell-page relative flex h-full overflow-hidden p-2'
-        : `teacher-shell-page fixed inset-0 ${(window.__getTeacherLayerClass?.('overlay') || 'z-[10000]')} flex items-center justify-center overflow-hidden bg-black/55 p-2`;
+        ? 'relative flex h-full overflow-hidden bg-[#f6f8fc] p-2'
+        : `fixed inset-0 ${(window.__getTeacherLayerClass?.('overlay') || 'z-[10000]')} flex items-center justify-center overflow-hidden bg-slate-950/35 p-2 backdrop-blur-sm`;
     const shellClassName = standalone
-        ? 'teacher-glass-dark teacher-glass-enter teacher-borderless relative flex h-full w-full flex-col overflow-hidden rounded-[24px]'
-        : 'teacher-glass-dark teacher-glass-enter teacher-borderless relative flex h-[94vh] w-[97vw] max-w-[1500px] flex-col overflow-hidden rounded-[28px]';
+        ? 'relative flex h-full w-full flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-[#f6f8fc] shadow-sm'
+        : 'relative flex h-[94vh] w-[97vw] max-w-[1500px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-[#f6f8fc] shadow-2xl';
 
     return (
         <div className={rootClassName} onClick={standalone ? undefined : handleClose}>
-            <div className="pointer-events-none absolute inset-0 opacity-90">
-                <div className="absolute -top-24 left-[8%] h-64 w-64 rounded-full bg-sky-400/18 blur-3xl"></div>
-                <div className="absolute right-[10%] top-[12%] h-72 w-72 rounded-full bg-emerald-400/14 blur-3xl"></div>
-                <div className="absolute bottom-[8%] left-[20%] h-56 w-56 rounded-full bg-indigo-400/12 blur-3xl"></div>
-            </div>
             <div
                 className={shellClassName}
                 onClick={e => e.stopPropagation()}
             >
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_72%)]"></div>
-
-                <div className="relative z-[1] flex flex-col gap-3 p-3 sm:p-4">
+                <div className="relative z-[1] flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
                     <div
-                        className="teacher-glass-light teacher-borderless flex flex-col gap-2.5 rounded-[28px] px-4 py-3 sm:px-5 sm:py-3.5"
+                        className="rounded-[24px] border border-slate-200 bg-white px-4 py-3 shadow-sm"
                         style={standalone ? { WebkitAppRegion: 'drag' } : undefined}
                         onMouseDown={handleTitlebarMouseDown}
                         onDoubleClick={handleTitlebarDoubleClick}
                     >
-                        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-                            <div className="min-w-0">
-                                <div className="mb-1.5 inline-flex items-center gap-2 rounded-full border border-sky-200/20 bg-sky-300/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-sky-100">
-                                    <i className="fas fa-chalkboard"></i>
-                                    Classroom Monitor
+                        <div className="flex flex-wrap items-center gap-2" style={standalone ? { WebkitAppRegion: 'no-drag' } : undefined} data-window-control={standalone ? 'true' : undefined}>
+                            <div className="mr-2 min-w-0 flex-1">
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <i className="fas fa-display text-blue-600"></i>
+                                    <h2 className="truncate text-lg font-black text-slate-950">{currentClassroom.name || '默认机房'}</h2>
                                 </div>
-                                <div className="flex items-center gap-2.5">
-                                    <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/16 bg-white/10 text-sky-100 shadow-[0_12px_24px_rgba(56,189,248,0.14)]">
-                                        <i className="fas fa-chalkboard-teacher"></i>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <h2 className="truncate text-lg sm:text-xl font-black tracking-[0.04em] text-white">机房视图</h2>
-                                        <p className="mt-0.5 text-xs text-slate-300">查看终端在线、告警与座位编排。</p>
-                                    </div>
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                    <span><b className="text-emerald-600">{onlineSeatCount}</b> 在线</span>
+                                    <span><b className="text-slate-600">{offlineSeatCount}</b> 离线</span>
+                                    <span><b className="text-blue-600">{seats.length}</b> 座位</span>
+                                    {alertSeatCount > 0 && <span><b className="text-amber-600">{alertSeatCount}</b> 告警</span>}
                                 </div>
                             </div>
-                            <div
-                                className="flex flex-wrap items-center gap-2 lg:justify-end"
-                                style={standalone ? { WebkitAppRegion: 'no-drag' } : undefined}
-                                data-window-control={standalone ? 'true' : undefined}
-                            >
-                                <span className="rounded-full border border-emerald-200/24 bg-emerald-300/14 px-3 py-1 text-[11px] font-bold text-emerald-100">
-                                    在线 {onlineSeatCount}
-                                </span>
-                                <span className="rounded-full border border-white/12 bg-white/8 px-3 py-1 text-[11px] font-bold text-slate-200">
-                                    离线 {offlineSeatCount}
-                                </span>
-                                <span className="rounded-full border border-white/12 bg-white/8 px-3 py-1 text-[11px] font-bold text-slate-200">
-                                    座位 {seats.length}
-                                </span>
-                                <span className="rounded-full border border-amber-200/20 bg-amber-300/10 px-3 py-1 text-[11px] font-bold text-amber-100">
-                                    告警 {alertSeatCount}
-                                </span>
-                                <span className="rounded-full border border-sky-200/20 bg-sky-300/10 px-3 py-1 text-[11px] font-bold text-sky-100">
-                                    编排 Free Canvas
-                                </span>
-                                {standalone && <WindowControls />}
-                            </div>
-                        </div>
-                    <div
-                        className="mt-2.5 border-t border-white/10 pt-2.5"
-                        style={standalone ? { WebkitAppRegion: 'no-drag' } : undefined}
-                        data-window-control={standalone ? 'true' : undefined}
-                    >
-                        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
-                                <div className="relative" ref={classroomMenuRef}>
-                                    <button
-                                        onClick={() => setShowClassroomMenu(!showClassroomMenu)}
-                                        className="teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium"
-                                    >
-                                        <i className="fas fa-users mr-1.5"></i>
-                                        <span className="max-w-[150px] truncate">{currentClassroom.name}</span>
-                                        <i className={`fas fa-chevron-down ml-2 text-xs transition-transform ${showClassroomMenu ? 'rotate-180' : ''}`}></i>
-                                    </button>
-                                </div>
-                                <div className="flex rounded-2xl overflow-hidden border border-white/10 bg-white/8">
-                                    <button onClick={() => setViewMode('grid')} className={`px-3 py-2 text-xs sm:text-sm transition-colors ${viewMode === 'grid' ? 'bg-sky-300/18 text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`} title="网格视图"><i className="fas fa-table-cells"></i></button>
-                                    <button onClick={() => setViewMode('list')} className={`px-3 py-2 text-xs sm:text-sm transition-colors ${viewMode === 'list' ? 'bg-sky-300/18 text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`} title="列表视图"><i className="fas fa-list"></i></button>
-                                </div>
-                                <button
-                                    onClick={() => handlePodiumAtTopChange(!currentPodiumTop)}
-                                    className="teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium"
-                                    title={currentPodiumTop ? '讲台在上，点击切换到底部' : '讲台在下，点击切换到顶部'}
-                                >
-                                    <i className="fas fa-chalkboard mr-1.5"></i>{currentPodiumTop ? '讲台在上' : '讲台在下'}
+
+                            <div className="relative" ref={classroomMenuRef}>
+                                <button onClick={() => setShowClassroomMenu(!showClassroomMenu)} className="flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50" title="切换机房">
+                                    <i className="fas fa-door-open text-blue-500"></i><span className="hidden max-w-[120px] truncate sm:inline">{currentClassroom.name}</span><i className={`fas fa-chevron-down text-[10px] text-slate-400 transition-transform ${showClassroomMenu ? 'rotate-180' : ''}`}></i>
                                 </button>
                             </div>
-                            <div className="flex items-center gap-2 flex-wrap justify-end w-full xl:w-auto">
-                                <button
-                                    className={`${monitorEnabled ? 'teacher-liquid-primary' : 'teacher-liquid-button'} flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors cursor-default`}
-                                    title="开启或关闭学生机监控"
-                                >
-                                    <i className={`fas ${monitorEnabled ? 'fa-eye' : 'fa-eye-slash'} mr-1.5`}></i>
-                                    {monitorEnabled ? `监控中 ${monitorIntervalSec}s` : '开启监控'}
-                                </button>
-                                <button onClick={handleAutoImport} disabled={autoImporting} className="teacher-liquid-primary flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors" title="自动检测在线学生并添加到座位表">
-                                    <i className={`fas ${autoImporting ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} mr-1.5`}></i>自动导入
-                                </button>
-                                <div className="relative" ref={moreMenuRef}>
-                                    <button
-                                        onClick={() => setShowMoreMenu(!showMoreMenu)}
-                                        className={`teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium ${showMoreMenu ? 'text-white bg-white/18' : 'text-slate-300'}`}
-                                    >
-                                        <i className="fas fa-ellipsis-vertical mr-1.5"></i>更多
-                                    </button>
-                                </div>
-                                <button onClick={() => setShowAddForm(v => !v)} className="teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium">
-                                    <i className="fas fa-plus mr-1.5"></i>手动添加
-                                </button>
-                                {!standalone && (
-                                    <button onClick={handleClose} className="w-10 h-10 flex items-center justify-center rounded-2xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors border border-white/10 bg-white/8">
-                                        <i className="fas fa-xmark text-lg"></i>
-                                    </button>
-                                )}
+                            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-1">
+                                <button onClick={() => setViewMode('grid')} className={`flex h-7 w-8 items-center justify-center rounded-lg text-xs transition-colors ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`} title="座位图"><i className="fas fa-table-cells"></i></button>
+                                <button onClick={() => setViewMode('list')} className={`flex h-7 w-8 items-center justify-center rounded-lg text-xs transition-colors ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`} title="列表"><i className="fas fa-list"></i></button>
                             </div>
-                        </div>
-                    </div>
-                    </div>
-
-                {showAddForm && (
-                    <div className="teacher-glass rounded-[26px] px-4 py-3 sm:px-5">
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                            <input value={addIp} onChange={e => setAddIp(e.target.value)} placeholder="IP 地址" className="w-28 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-xs text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-40 sm:text-sm" />
-                            <input value={addName} onChange={e => setAddName(e.target.value)} placeholder="学生姓名" className="w-24 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-xs text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-32 sm:text-sm" />
-                            <input value={addStudentId} onChange={e => setAddStudentId(e.target.value)} placeholder="学号" className="hidden w-28 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-sm text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:block" />
-                            <input value={addMac} onChange={e => setAddMac(e.target.value)} placeholder="MAC" className="hidden w-36 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-sm text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 md:block" />
-                            <span className="text-xs text-slate-300 sm:text-sm">行</span>
-                            <input type="number" min="1" value={addRow} onChange={e => setAddRow(e.target.value)} className="w-14 rounded-2xl border border-white/18 bg-slate-950/45 px-2 py-2 text-center text-xs text-slate-100 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-16 sm:text-sm" />
-                            <span className="text-xs text-slate-300 sm:text-sm">列</span>
-                            <input type="number" min="1" value={addCol} onChange={e => setAddCol(e.target.value)} className="w-14 rounded-2xl border border-white/18 bg-slate-950/45 px-2 py-2 text-center text-xs text-slate-100 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-16 sm:text-sm" />
-                            <button onClick={handleAddSeat} className="teacher-liquid-primary rounded-2xl px-4 py-2 text-xs font-bold transition-colors sm:text-sm">添加</button>
-                            <button onClick={() => setShowAddForm(false)} className="teacher-liquid-button rounded-2xl px-3 py-2 text-xs transition-colors sm:text-sm">取消</button>
-                        </div>
-                    </div>
-                )}
-
-                {showAddClassroom && (
-                    <div className="teacher-glass rounded-[26px] px-4 py-3 sm:px-5">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/14 bg-white/10 text-sky-100">
-                                <i className="fas fa-users"></i>
+                            <button onClick={() => handlePodiumAtTopChange(!currentPodiumTop)} className="flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50" title={currentPodiumTop ? '讲台在上' : '讲台在下'}>
+                                <i className="fas fa-chalkboard text-blue-500"></i><span className="hidden sm:inline">{currentPodiumTop ? '讲台上' : '讲台下'}</span>
+                            </button>
+                            <div className={`hidden h-9 items-center gap-2 rounded-xl border px-3 text-xs font-bold sm:flex ${monitorEnabled ? 'border-blue-100 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500'}`}>
+                                <i className={`fas ${monitorEnabled ? 'fa-eye' : 'fa-eye-slash'}`}></i>{monitorEnabled ? `监控 ${monitorIntervalSec}s` : '监控关闭'}
                             </div>
-                            <input
-                                value={newClassName}
-                                onChange={e => setNewClassName(e.target.value)}
-                                placeholder="输入班级名称，例如：高一 1 班"
-                                className="flex-1 rounded-2xl border border-white/14 bg-white/8 px-4 py-2 text-sm text-white placeholder-slate-400 outline-none focus:border-sky-300"
-                                autoFocus
-                                onKeyDown={e => { if (e.key === 'Enter') handleCreateClassroom(); if (e.key === 'Escape') setShowAddClassroom(false); }}
-                            />
-                            <div className="flex items-center gap-2 sm:justify-end">
-                                <button onClick={handleCreateClassroom} className="teacher-liquid-primary rounded-2xl px-4 py-2 text-sm font-bold transition-colors">创建</button>
-                                <button onClick={() => setShowAddClassroom(false)} className="teacher-liquid-button rounded-2xl px-3 py-2 text-sm transition-colors">取消</button>
+                            <button onClick={handleAutoImport} disabled={autoImporting} className="flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-bold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60" title="自动检测在线学生并添加到座位表">
+                                <i className={`fas ${autoImporting ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`}></i><span className="hidden sm:inline">{autoImporting ? '导入中' : '自动导入'}</span>
+                            </button>
+                            <div className="relative" ref={moreMenuRef}>
+                                <button onClick={() => setShowMoreMenu(!showMoreMenu)} className={`flex h-9 w-9 items-center justify-center rounded-xl border text-xs transition-colors ${showMoreMenu ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`} title="更多">
+                                    <i className="fas fa-ellipsis-vertical"></i>
+                                </button>
                             </div>
+                            <button onClick={() => setShowAddForm(v => !v)} className="flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50" title="手动添加"><i className="fas fa-plus text-blue-500"></i><span className="hidden sm:inline">添加</span></button>
+                            {!standalone && <button onClick={handleClose} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500"><i className="fas fa-xmark"></i></button>}
+                            {standalone && <WindowControls />}
                         </div>
                     </div>
-                )}
 
-                {importError && (
-                    <div className="rounded-[24px] border border-red-400/24 bg-red-400/12 px-4 py-3 text-sm text-red-100 shadow-[0_16px_34px_rgba(127,29,29,0.18)]">
-                        <div className="flex items-center gap-3">
-                            <i className="fas fa-triangle-exclamation text-red-300"></i>
-                            <span className="min-w-0 flex-1">{importError}</span>
-                            <button onClick={() => setImportError(null)} className="text-red-200 hover:text-white transition-colors"><i className="fas fa-xmark"></i></button>
-                        </div>
-                    </div>
-                )}
-
-                <div className="teacher-glass-light teacher-borderless flex items-center gap-4 rounded-[24px] px-4 py-3 text-[11px] text-slate-300 sm:text-xs">
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"></span>在线</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-500 inline-block"></span>离线</span>
-                    <span className="hidden sm:flex items-center gap-1.5"><i className="fas fa-compress text-orange-400"></i>退出全屏</span>
-                    <span className="hidden sm:flex items-center gap-1.5"><i className="fas fa-eye-slash text-red-400"></i>切换页面</span>
-                    <span className="hidden sm:flex items-center gap-1.5"><i className="fas fa-desktop text-sky-300"></i>{monitorEnabled ? `缩略图 ${monitorIntervalSec}s 更新` : '监控关闭'}</span>
-                    <span className="ml-auto hidden text-slate-400 lg:inline">拖拽座位可调整位置，点击姓名可快速编辑学生信息。</span>
-                </div>
-
-                <div className="flex-1 min-h-0">
-                    {viewMode === 'list' ? (
-                        <div className="h-full min-h-0">{renderList()}</div>
-                    ) : (
-                        <div className="teacher-glass-light teacher-borderless flex h-full min-h-0 flex-col rounded-[30px] p-2.5 sm:p-4">
-                            {currentPodiumTop && <div className="pb-3 shrink-0">{renderPodium()}</div>}
-                            {renderSeatCanvas()}
-                            {!currentPodiumTop && <div className="pt-3 shrink-0">{renderPodium()}</div>}
+                    {showAddForm && (
+                        <div className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-sm">
+                            <div className="grid grid-cols-2 gap-2 md:grid-cols-[1.3fr_1fr_1fr_1.2fr_96px_96px_auto_auto]">
+                                <input value={addIp} onChange={e => setAddIp(e.target.value)} placeholder="IP 地址" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-300 focus:bg-white" />
+                                <input value={addName} onChange={e => setAddName(e.target.value)} placeholder="学生姓名" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-300 focus:bg-white" />
+                                <input value={addStudentId} onChange={e => setAddStudentId(e.target.value)} placeholder="学号" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-300 focus:bg-white" />
+                                <input value={addMac} onChange={e => setAddMac(e.target.value)} placeholder="MAC" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-300 focus:bg-white" />
+                                <input type="number" min="1" value={addRow} onChange={e => setAddRow(e.target.value)} aria-label="行" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-300 focus:bg-white" />
+                                <input type="number" min="1" value={addCol} onChange={e => setAddCol(e.target.value)} aria-label="列" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-300 focus:bg-white" />
+                                <button onClick={() => setShowAddForm(false)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">取消</button>
+                                <button onClick={handleAddSeat} className="rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700">添加</button>
+                            </div>
                         </div>
                     )}
+
+                    {showAddClassroom && (
+                        <div className="rounded-[20px] border border-blue-100 bg-white p-3 shadow-sm">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center"><input value={newClassName} onChange={e => setNewClassName(e.target.value)} placeholder="输入班级名称，例如：高一 1 班" className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-300 focus:bg-white" autoFocus onKeyDown={e => { if (e.key === 'Enter') handleCreateClassroom(); if (e.key === 'Escape') setShowAddClassroom(false); }} /><button onClick={() => setShowAddClassroom(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">取消</button><button onClick={handleCreateClassroom} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700">创建</button></div>
+                        </div>
+                    )}
+
+                    {importError && <div className="rounded-[18px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm"><div className="flex items-center gap-3"><i className="fas fa-triangle-exclamation text-red-500"></i><span className="min-w-0 flex-1">{importError}</span><button onClick={() => setImportError(null)} className="text-red-500 hover:text-red-700"><i className="fas fa-xmark"></i></button></div></div>}
+
+                    <div className="min-h-0 flex-1">{viewMode === 'list' ? <div className="h-full min-h-0">{renderList()}</div> : <div className="flex h-full min-h-0 flex-col rounded-[20px] border border-slate-200 bg-slate-50 p-2">{currentPodiumTop && <div className="shrink-0 pb-2">{renderPodium()}</div>}{renderSeatCanvas()}{!currentPodiumTop && <div className="shrink-0 pt-2">{renderPodium()}</div>}</div>}</div>
                 </div>
 
                 {previewSeat && createPortal(
@@ -1367,7 +1423,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                 {powerMenu && createPortal(
                     <div
                         ref={powerMenuPopupRef}
-                        className={`teacher-glass-dark rounded-[18px] py-2 ${(window.__getTeacherLayerClass?.('popup') || 'z-[10040]')} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`}
+                        className={`rounded-[18px] border border-slate-200 bg-white py-2 ${(window.__getTeacherLayerClass?.('popup') || 'z-[10040]')} overflow-hidden shadow-xl`}
                         style={getPowerMenuStyle()}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => e.stopPropagation()}
@@ -1377,7 +1433,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                         </div>
                         <button
                             onClick={() => openSeatDetail(seats.find(seat => seat.id === powerMenu.seatIds[0]))}
-                            className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+                            className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-blue-600"
                         >
                             <i className="fas fa-circle-info mr-2 w-5 text-center"></i>查看详细信息
                         </button>
@@ -1386,7 +1442,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                             <button
                                 key={item.action}
                                 onClick={() => sendPowerControl(item.action, seats.filter(seat => powerMenu.seatIds.includes(seat.id)))}
-                                className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+                                className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-blue-600"
                             >
                                 <i className={`fas ${item.icon} mr-2 w-5 text-center`}></i>{item.label}
                             </button>
@@ -1401,7 +1457,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                         onClick={() => setDetailSeat(null)}
                     >
                         <div
-                            className="teacher-glass-dark w-[92vw] max-w-lg rounded-[28px] border border-white/14 p-6 shadow-[0_28px_80px_rgba(2,6,23,0.45)]"
+                            className="w-[92vw] max-w-lg rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="mb-5 flex items-start justify-between gap-4">
@@ -1440,12 +1496,12 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                 {showClassroomMenu && createPortal(
                     <div
                         ref={classroomMenuPopupRef}
-                        className={`teacher-glass-dark rounded-[22px] py-2 ${(window.__getTeacherLayerClass?.('popup') || 'z-[10040]')} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`}
+                        className={`rounded-[22px] border border-slate-200 bg-white py-2 ${(window.__getTeacherLayerClass?.('popup') || 'z-[10040]')} overflow-hidden shadow-xl`}
                         style={getPopupStyle(classroomMenuRef, { width: 256, align: 'left' })}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
+                        <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
                             <span className="text-xs font-bold text-slate-400 uppercase tracking-[0.18em]">班级列表</span>
                             <button
                                 onClick={() => { setShowAddClassroom(true); setShowClassroomMenu(false); }}
@@ -1459,7 +1515,7 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                                 key={id}
                                 onClick={() => handleSwitchClassroom(id)}
                                 className={`px-3 py-2.5 flex items-center justify-between group transition-colors cursor-pointer ${
-                                    id === currentClassroomId ? 'bg-sky-300/16 text-sky-100' : 'hover:bg-white/10 text-slate-300'
+                                    id === currentClassroomId ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-700'
                                 }`}
                             >
                                 <div className="flex-1 min-w-0">
@@ -1484,34 +1540,33 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                 {showMoreMenu && createPortal(
                     <div
                         ref={moreMenuPopupRef}
-                        className={`teacher-glass-dark rounded-[22px] py-2 ${(window.__getTeacherLayerClass?.('popup') || 'z-[10040]')} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`}
+                        className={`rounded-[22px] border border-slate-200 bg-white py-2 ${(window.__getTeacherLayerClass?.('popup') || 'z-[10040]')} overflow-hidden shadow-xl`}
                         style={getPopupStyle(moreMenuRef, { width: 208, align: 'right' })}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => e.stopPropagation()}
                     >
                         <input ref={fileInputRef} type="file" accept=".csv,.txt,.json" className="hidden" onChange={(e) => { handleImportFile(e); setShowMoreMenu(false); }} />
-                        <button onClick={() => { fileInputRef.current && fileInputRef.current.click(); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center">
+                        <button onClick={() => { fileInputRef.current && fileInputRef.current.click(); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition-colors flex items-center">
                             <i className="fas fa-file-import w-5 mr-2 text-center"></i>导入列表
                         </button>
-                        <button onClick={() => { handleExportCsv(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center">
+                        <button onClick={() => { handleExportCsv(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition-colors flex items-center">
                             <i className="fas fa-table-list w-5 mr-2 text-center"></i>导出 CSV
                         </button>
-                        <button onClick={() => { handleExportJson(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center">
+                        <button onClick={() => { handleExportJson(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition-colors flex items-center">
                             <i className="fas fa-file-export w-5 mr-2 text-center"></i>导出 JSON
                         </button>
-                        <div className="h-px bg-white/10 my-1 mx-2"></div>
-                        <button onClick={() => { handleDownloadTemplate(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center">
+                        <div className="h-px bg-slate-100 my-1 mx-2"></div>
+                        <button onClick={() => { handleDownloadTemplate(); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition-colors flex items-center">
                             <i className="fas fa-download w-5 mr-2 text-center"></i>下载模板
                         </button>
                     </div>,
                     document.body
                 )}
             </div>
-            </div>
 
             {editingId && (
-                <div className={`fixed inset-0 bg-black/55 backdrop-blur-md flex items-center justify-center ${(window.__getTeacherLayerClass?.('modal') || 'z-[10020]')}`} onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) setEditingId(null); }}>
-                    <div className="teacher-glass-dark w-[92vw] max-w-md rounded-[30px] p-6 border border-white/14 shadow-[0_28px_80px_rgba(2,6,23,0.42)]">
+                <div className={`fixed inset-0 bg-slate-950/35 backdrop-blur-sm flex items-center justify-center ${(window.__getTeacherLayerClass?.('modal') || 'z-[10020]')}`} onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) setEditingId(null); }}>
+                    <div className="w-[92vw] max-w-md rounded-[30px] border border-slate-200 bg-white p-6 shadow-2xl">
                         <div className="mb-5 flex items-center gap-3">
                             <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/14 bg-white/10 text-sky-100">
                                 <i className="fas fa-user-pen"></i>
@@ -1545,8 +1600,8 @@ function ClassroomView({ onClose, socket, studentLog, studentScreenshots = {}, m
                             </div>
                         </div>
                         <div className="flex justify-end gap-2 mt-6">
-                            <button onClick={() => setEditingId(null)} className="teacher-liquid-button rounded-2xl px-4 py-2 text-sm transition-colors">取消</button>
-                            <button onClick={commitEdit} className="teacher-liquid-primary rounded-2xl px-4 py-2 text-sm font-bold transition-colors">保存</button>
+                            <button onClick={() => setEditingId(null)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50">取消</button>
+                            <button onClick={commitEdit} className="rounded-2xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700">保存</button>
                         </div>
                     </div>
                 </div>

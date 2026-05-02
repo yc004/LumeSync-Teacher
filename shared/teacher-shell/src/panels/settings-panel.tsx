@@ -108,21 +108,17 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = (
         }
     };
 
-    return (
-        <div className={`fixed inset-0 ${zIndex} flex justify-end bg-black/20 backdrop-blur-sm`} onClick={onClose}>
-            <div
-                className="teacher-glass-drawer w-[22rem] h-full flex flex-col overflow-y-auto"
-                onClick={e => e.stopPropagation()}
-            >
-                <div className="flex items-center justify-between px-5 py-3 border-b border-white/10">
-                    <h3 className="font-bold text-white text-lg flex items-center">
-                        <i className="fas fa-gear mr-2 text-blue-500"></i> 课堂设置
-                    </h3>
-                    <button onClick={onClose} className="text-slate-300 hover:text-white">
-                        <i className="fas fa-xmark text-xl"></i>
-                    </button>
-                </div>
-                <div className="flex-1 px-5 py-4 space-y-4">
+    const panelContent = (
+        <>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-white/10">
+                <h3 className="font-bold text-lg flex items-center text-white">
+                    <i className="fas fa-gear mr-2 text-blue-500"></i> 设置
+                </h3>
+                <button onClick={onClose} className="text-slate-300 hover:text-white">
+                    <i className="fas fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div className="flex-1 px-5 py-4 space-y-4">
                     {[
                         { key: 'forceFullscreen',     label: '强制学生全屏',  icon: 'fa-expand' },
                         { key: 'syncFollow',          label: '学生跟随翻页',  icon: 'fa-rotate' },
@@ -343,7 +339,17 @@ function SettingsPanel({ settings, onSettingsChange, socket, onClose, zIndex = (
                             打开日志目录
                         </button>
                     </div>
-                </div>
+            </div>
+        </>
+    );
+
+    return (
+        <div className={`fixed inset-0 ${zIndex} flex justify-end bg-black/20 backdrop-blur-sm`} onClick={onClose}>
+            <div
+                className="teacher-glass-drawer w-[22rem] h-full flex flex-col overflow-y-auto"
+                onClick={e => e.stopPropagation()}
+            >
+                {panelContent}
             </div>
         </div>
     );

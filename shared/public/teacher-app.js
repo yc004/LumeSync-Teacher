@@ -346,19 +346,13 @@ function SettingsPanel({
       setTimeout(() => setSubmissionDirStatus(null), 3000);
     }
   };
-  return /*#__PURE__*/React.createElement("div", {
-    className: `fixed inset-0 ${zIndex} flex justify-end bg-black/20 backdrop-blur-sm`,
-    onClick: onClose
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass-drawer w-[22rem] h-full flex flex-col overflow-y-auto",
-    onClick: e => e.stopPropagation()
-  }, /*#__PURE__*/React.createElement("div", {
+  const panelContent = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between px-5 py-3 border-b border-white/10"
   }, /*#__PURE__*/React.createElement("h3", {
-    className: "font-bold text-white text-lg flex items-center"
+    className: "font-bold text-lg flex items-center text-white"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-gear mr-2 text-blue-500"
-  }), " \u8BFE\u5802\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("button", {
+  }), " \u8BBE\u7F6E"), /*#__PURE__*/React.createElement("button", {
     onClick: onClose,
     className: "text-slate-300 hover:text-white"
   }, /*#__PURE__*/React.createElement("i", {
@@ -583,7 +577,14 @@ function SettingsPanel({
     className: "teacher-liquid-button w-full py-2 px-3 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-folder-open text-slate-300"
-  }), "\u6253\u5F00\u65E5\u5FD7\u76EE\u5F55")))));
+  }), "\u6253\u5F00\u65E5\u5FD7\u76EE\u5F55"))));
+  return /*#__PURE__*/React.createElement("div", {
+    className: `fixed inset-0 ${zIndex} flex justify-end bg-black/20 backdrop-blur-sm`,
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "teacher-glass-drawer w-[22rem] h-full flex flex-col overflow-y-auto",
+    onClick: e => e.stopPropagation()
+  }, panelContent));
 }
 
 // ---- shared/teacher-shell/src/views/classroom-view.tsx ----
@@ -592,6 +593,103 @@ function SettingsPanel({
 // 功能：显示所有学生座位，支持命名、拖拽排列、在线状态
 // 布局和命名持久化到 localStorage，支持多个班级（表）
 // ========================================================
+const areSeatCardPropsEqual = (prev, next) => prev.seat === next.seat && prev.position.x === next.position.x && prev.position.y === next.position.y && prev.coordLabel === next.coordLabel && prev.isOnline === next.isOnline && prev.isSelected === next.isSelected && prev.isDragging === next.isDragging && prev.hasSnapshot === next.hasSnapshot && prev.lastAlertType === next.lastAlertType && prev.capturedAtLabel === next.capturedAtLabel && prev.dropPulseKey === next.dropPulseKey && prev.monitorEnabled === next.monitorEnabled;
+const SeatCanvasCard = React.memo(function SeatCanvasCard({
+  seat,
+  position,
+  coordLabel,
+  isOnline,
+  isSelected,
+  isDragging,
+  hasSnapshot,
+  lastAlertType,
+  lastAlertLabel,
+  lastAlertColor,
+  lastAlertIcon,
+  screenshot,
+  capturedAtLabel,
+  monitorEnabled,
+  dropPulseKey,
+  onMouseDown,
+  onContextMenu,
+  onCardClick,
+  onDelete,
+  onStartEdit
+}) {
+  const pulseRef = useRef(null);
+  useEffect(() => {
+    if (!dropPulseKey || !pulseRef.current) return;
+    pulseRef.current.animate([{
+      transform: 'scale(1)'
+    }, {
+      transform: 'scale(1.018)'
+    }, {
+      transform: 'scale(1)'
+    }], {
+      duration: 180,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+    });
+  }, [dropPulseKey]);
+  return /*#__PURE__*/React.createElement("div", {
+    "data-seat-card": "true",
+    onMouseDown: onMouseDown,
+    onContextMenu: onContextMenu,
+    onClick: onCardClick,
+    className: `absolute left-0 top-0 select-none will-change-transform ${hasSnapshot ? 'cursor-zoom-in' : 'cursor-grab active:cursor-grabbing'}`,
+    style: {
+      width: '150px',
+      height: '100px',
+      transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
+      zIndex: isDragging ? 30 : isSelected ? 20 : 10,
+      transition: isDragging ? 'none' : 'transform 160ms ease, filter 160ms ease'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    ref: pulseRef,
+    className: `group relative h-full overflow-hidden rounded-xl border bg-slate-100 ${isDragging ? 'scale-[0.985]' : 'hover:-translate-y-0.5'} ${isSelected ? 'border-blue-500 ring-2 ring-blue-300' : lastAlertType ? 'border-amber-300 ring-2 ring-amber-200' : isOnline ? 'border-emerald-300' : 'border-slate-300'}`
+  }, hasSnapshot ? /*#__PURE__*/React.createElement("img", {
+    src: screenshot.dataUrl,
+    alt: `${seat.name || seat.ip} screenshot`,
+    className: "absolute inset-0 h-full w-full object-cover"
+  }) : /*#__PURE__*/React.createElement("div", {
+    className: "absolute inset-0 flex items-center justify-center bg-slate-100 text-slate-300"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-desktop text-2xl"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/72 via-slate-950/8 to-slate-950/18"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "absolute left-2 top-2 flex items-center gap-1.5 rounded-full bg-slate-950/48 px-2 py-1 text-[9px] font-bold text-white backdrop-blur-sm"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: `h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-400' : 'bg-slate-400'}`
+  }), /*#__PURE__*/React.createElement("span", null, coordLabel)), lastAlertType && /*#__PURE__*/React.createElement("div", {
+    className: "absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-[10px] text-white shadow-sm",
+    title: lastAlertLabel
+  }, /*#__PURE__*/React.createElement("i", {
+    className: `fas ${lastAlertIcon}`
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: event => {
+      event.stopPropagation();
+      onDelete?.();
+    },
+    className: "absolute right-2 top-2 z-20 hidden h-6 w-6 items-center justify-center rounded-full bg-red-500 text-[10px] text-white shadow-sm transition-colors hover:bg-red-600 group-hover:flex",
+    title: "\\u5220\\u9664\\u5ea7\\u4f4d"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-xmark text-[10px]"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "absolute inset-x-0 bottom-0 p-2 text-white"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "truncate cursor-text text-[12px] font-black leading-tight drop-shadow",
+    title: `${seat.name || '\u672a\u547d\u540d\u8bbe\u5907'}\n${seat.studentId ? '\u5b66\u53f7: ' + seat.studentId : ''}\n${seat.ip}`,
+    onDoubleClick: () => onStartEdit(seat)
+  }, seat.name || /*#__PURE__*/React.createElement("span", {
+    className: "italic text-white/75"
+  }, "\\u672a\\u547d\\u540d\\u8bbe\\u5907")), /*#__PURE__*/React.createElement("div", {
+    className: "mt-0.5 flex min-w-0 items-center justify-between gap-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "truncate font-mono text-[9px] text-white/78"
+  }, seat.ip), /*#__PURE__*/React.createElement("span", {
+    className: "shrink-0 text-[8px] text-white/62"
+  }, hasSnapshot ? capturedAtLabel : monitorEnabled ? '\u7b49\u5f85\u622a\u56fe' : '\u76d1\u63a7\u5173\u95ed')))));
+}, areSeatCardPropsEqual);
 function ClassroomView({
   onClose,
   socket,
@@ -605,10 +703,11 @@ function ClassroomView({
 }) {
   const STORAGE_KEY = 'classroom-layouts-v1';
   const podiumOnTop = typeof podiumAtTop === 'boolean' ? podiumAtTop : true;
-  const SEAT_CARD_WIDTH = 190;
-  const SEAT_CARD_HEIGHT = Math.round(SEAT_CARD_WIDTH * 9 / 16);
-  const SEAT_CARD_GAP = 20;
-  const CANVAS_PADDING = 36;
+  const GRID_SIZE = 50;
+  const SEAT_CARD_WIDTH = GRID_SIZE * 3;
+  const SEAT_CARD_HEIGHT = GRID_SIZE * 2;
+  const SEAT_CARD_GAP = GRID_SIZE;
+  const CANVAS_PADDING = GRID_SIZE;
 
   // 多班级状态管理
   const [classrooms, setClassrooms] = useState(() => {
@@ -673,6 +772,7 @@ function ClassroomView({
   const [editStudentId, setEditStudentId] = useState('');
   const [dragId, setDragId] = useState(null);
   const [dragPreviewPos, setDragPreviewPos] = useState(null);
+  const [dropPulse, setDropPulse] = useState(null);
   const [addRow, setAddRow] = useState(1);
   const [addCol, setAddCol] = useState(1);
   const [addIp, setAddIp] = useState('');
@@ -713,7 +813,6 @@ function ClassroomView({
   const maxRow = seats.reduce((m, s) => Math.max(m, s.row), 0);
   const maxCol = seats.reduce((m, s) => Math.max(m, s.col), 0);
   const layoutCols = Math.max(maxCol, 6);
-  const GRID_SNAP_THRESHOLD = 16;
   const rowColToCanvasPos = (row, col) => {
     const safeRow = Math.max(1, Number(row) || 1);
     const safeCol = Math.max(1, Number(col) || 1);
@@ -727,42 +826,30 @@ function ClassroomView({
     col: Math.max(1, Math.round(Math.max(0, x - CANVAS_PADDING) / (SEAT_CARD_WIDTH + SEAT_CARD_GAP)) + 1)
   });
   const getSnappedCanvasPos = (x, y) => {
-    const grid = canvasPosToRowCol(x, y);
-    const snapped = rowColToCanvasPos(grid.row, grid.col);
-    const dx = Math.abs(snapped.x - x);
-    const dy = Math.abs(snapped.y - y);
-    if (dx <= GRID_SNAP_THRESHOLD) x = snapped.x;
-    if (dy <= GRID_SNAP_THRESHOLD) y = snapped.y;
+    // 关键算法：所有自由拖拽坐标都按 50px 基础网格强制吸附。
+    const snappedX = CANVAS_PADDING + Math.round((x - CANVAS_PADDING) / GRID_SIZE) * GRID_SIZE;
+    const snappedY = CANVAS_PADDING + Math.round((y - CANVAS_PADDING) / GRID_SIZE) * GRID_SIZE;
+    const grid = canvasPosToRowCol(snappedX, snappedY);
     return {
-      x,
-      y,
+      x: snappedX,
+      y: snappedY,
       row: grid.row,
       col: grid.col,
-      snappedX: dx <= GRID_SNAP_THRESHOLD,
-      snappedY: dy <= GRID_SNAP_THRESHOLD
+      snappedX: true,
+      snappedY: true
     };
   };
   const getGridOverlayStyle = (active = false) => {
-    const majorAlpha = active ? 0.16 : 0.08;
-    const minorAlpha = active ? 0.1 : 0.05;
+    const majorAlpha = active ? 0.18 : 0.1;
+    const minorAlpha = active ? 0.12 : 0.07;
     const majorW = SEAT_CARD_WIDTH + SEAT_CARD_GAP;
     const majorH = SEAT_CARD_HEIGHT + SEAT_CARD_GAP;
-    const minorW = Math.max(12, Math.round(majorW / 2));
-    const minorH = Math.max(10, Math.round(majorH / 2));
     return {
       backgroundImage: [`linear-gradient(to right, rgba(125,211,252,${minorAlpha}) 1px, transparent 1px)`, `linear-gradient(to bottom, rgba(125,211,252,${minorAlpha}) 1px, transparent 1px)`, `linear-gradient(to right, rgba(125,211,252,${majorAlpha}) 1px, transparent 1px)`, `linear-gradient(to bottom, rgba(125,211,252,${majorAlpha}) 1px, transparent 1px)`].join(', '),
-      backgroundSize: [`${minorW}px ${minorH}px`, `${minorW}px ${minorH}px`, `${majorW}px ${majorH}px`, `${majorW}px ${majorH}px`].join(', '),
+      backgroundSize: [`${GRID_SIZE}px ${GRID_SIZE}px`, `${GRID_SIZE}px ${GRID_SIZE}px`, `${majorW}px ${majorH}px`, `${majorW}px ${majorH}px`].join(', '),
       backgroundPosition: [`${CANVAS_PADDING}px ${CANVAS_PADDING}px`, `${CANVAS_PADDING}px ${CANVAS_PADDING}px`, `${CANVAS_PADDING}px ${CANVAS_PADDING}px`, `${CANVAS_PADDING}px ${CANVAS_PADDING}px`].join(', ')
     };
   };
-  const isSeatSnapped = seat => {
-    const pos = dragPreviewPos && dragPreviewPos.id === seat.id ? dragPreviewPos : getSeatCanvasPosition(seat);
-    const snapped = getSnappedCanvasPos(pos.x, pos.y);
-    return snapped.snappedX || snapped.snappedY;
-  };
-  const getSeatTransitionClass = dragging => dragging ? 'transition-none' : 'transition-[transform,box-shadow,border-color,opacity] duration-150';
-  const getSeatSnapIndicatorClass = seat => isSeatSnapped(seat) ? 'ring-2 ring-sky-300/45' : '';
-  const getSeatDragShadowClass = dragging => dragging ? 'shadow-[0_24px_48px_rgba(56,189,248,0.22)]' : '';
   const getSeatPreviewPos = seat => dragPreviewPos && dragPreviewPos.id === seat.id ? dragPreviewPos : getSeatCanvasPosition(seat);
   const getSeatRenderPos = seat => {
     const pos = getSeatPreviewPos(seat);
@@ -793,17 +880,8 @@ function ClassroomView({
       canvasHeight
     };
   };
-  const getCanvasGridClass = () => dragId ? 'opacity-100' : 'opacity-70';
+  const getCanvasGridClass = () => dragId ? 'opacity-100' : 'opacity-75';
   const getCanvasGridStyle = () => getGridOverlayStyle(Boolean(dragId));
-  const getSeatCanvasStyle = seat => {
-    const pos = getSeatRenderPos(seat);
-    return {
-      left: `${pos.x}px`,
-      top: `${pos.y}px`,
-      width: `${SEAT_CARD_WIDTH}px`,
-      height: `${SEAT_CARD_HEIGHT}px`
-    };
-  };
   const getSeatGridCoords = seat => {
     const pos = getSeatRenderPos(seat);
     return canvasPosToRowCol(pos.x, pos.y);
@@ -830,23 +908,43 @@ function ClassroomView({
     };
   };
   const getCanvasClamp = canvas => ({
-    maxX: Math.max(0, canvas.clientWidth - SEAT_CARD_WIDTH),
-    maxY: Math.max(0, canvas.clientHeight - SEAT_CARD_HEIGHT)
+    minX: CANVAS_PADDING,
+    minY: CANVAS_PADDING,
+    maxX: Math.max(CANVAS_PADDING, canvas.clientWidth - SEAT_CARD_WIDTH - CANVAS_PADDING),
+    maxY: Math.max(CANVAS_PADDING, canvas.clientHeight - SEAT_CARD_HEIGHT - CANVAS_PADDING)
   });
   const clampSeatPos = (x, y, canvas) => {
     const {
+      minX,
+      minY,
       maxX,
       maxY
     } = getCanvasClamp(canvas);
     return {
-      x: Math.min(maxX, Math.max(0, x)),
-      y: Math.min(maxY, Math.max(0, y))
+      x: Math.min(maxX, Math.max(minX, x)),
+      y: Math.min(maxY, Math.max(minY, y))
     };
   };
-  const toCanvasPointerPos = (event, canvasRect, viewport) => ({
-    x: event.clientX - canvasRect.left + viewport.scrollLeft,
-    y: event.clientY - canvasRect.top + viewport.scrollTop
-  });
+  const getCanvasPointerScale = (canvas, canvasRect) => {
+    const scaleX = canvasRect.width > 0 ? canvasRect.width / canvas.clientWidth : 1;
+    const scaleY = canvasRect.height > 0 ? canvasRect.height / canvas.clientHeight : 1;
+    return {
+      scaleX: scaleX || 1,
+      scaleY: scaleY || 1
+    };
+  };
+  const toCanvasPointerPos = (event, canvasRect, viewport, canvas) => {
+    const {
+      scaleX,
+      scaleY
+    } = getCanvasPointerScale(canvas, canvasRect);
+    return {
+      // 关键算法：鼠标在缩放后的视口里移动时，先除以 scale，
+      // 再转回未缩放的画布坐标，保证拖拽和框选与光标对齐。
+      x: (event.clientX - canvasRect.left) / scaleX + viewport.scrollLeft,
+      y: (event.clientY - canvasRect.top) / scaleY + viewport.scrollTop
+    };
+  };
   const toSeatDragPos = (pointer, offsetX, offsetY, canvas) => clampSeatPos(pointer.x - offsetX, pointer.y - offsetY, canvas);
   const getDragMoved = (nextX, nextY, startPos) => Math.abs(nextX - startPos.x) > 2 || Math.abs(nextY - startPos.y) > 2;
   const queueSeatPreviewUpdate = (setPreview, next) => setPreview(next);
@@ -855,9 +953,9 @@ function ClassroomView({
     offsetX: pointer.x - startPos.x,
     offsetY: pointer.y - startPos.y
   });
-  const getCanvasScrollPointer = (event, canvasRect, viewport) => toCanvasPointerPos(event, canvasRect, viewport);
+  const getCanvasScrollPointer = (event, canvasRect, viewport, canvas) => toCanvasPointerPos(event, canvasRect, viewport, canvas);
   const getSeatMovePoint = (moveEvent, canvasRect, viewport, offsetX, offsetY, canvas) => {
-    const pointer = getCanvasScrollPointer(moveEvent, canvasRect, viewport);
+    const pointer = getCanvasScrollPointer(moveEvent, canvasRect, viewport, canvas);
     return toSeatDragPos(pointer, offsetX, offsetY, canvas);
   };
   const getSeatDropState = lastPos => getSeatFinalDrop(lastPos.x, lastPos.y);
@@ -866,18 +964,19 @@ function ClassroomView({
     id: seatId,
     ...getSeatPreviewState(lastPos)
   });
-  const getSeatCardGuideClass = seat => isSeatSnapped(seat) ? 'before:absolute before:inset-0 before:border before:border-sky-300/35 before:rounded-[20px] before:pointer-events-none' : '';
   const getSeatCanvasPosition = seat => {
     if (Number.isFinite(Number(seat?.x)) && Number.isFinite(Number(seat?.y))) {
+      const snapped = getSnappedCanvasPos(Math.max(CANVAS_PADDING, Number(seat.x)), Math.max(CANVAS_PADDING, Number(seat.y)));
       return {
-        x: Math.max(0, Number(seat.x)),
-        y: Math.max(0, Number(seat.y))
+        x: snapped.x,
+        y: snapped.y
       };
     }
     return rowColToCanvasPos(seat?.row, seat?.col);
   };
   const withSeatCanvasPosition = seat => {
-    const pos = getSeatCanvasPosition(seat);
+    const basePos = getSeatCanvasPosition(seat);
+    const pos = getSnappedCanvasPos(basePos.x, basePos.y);
     const grid = canvasPosToRowCol(pos.x, pos.y);
     return {
       ...seat,
@@ -1231,7 +1330,7 @@ function ClassroomView({
     event.preventDefault();
     const startPos = getSeatDragStart(seat);
     const canvasRect = canvas.getBoundingClientRect();
-    const startPointer = getCanvasScrollPointer(event, canvasRect, viewport);
+    const startPointer = getCanvasScrollPointer(event, canvasRect, viewport, canvas);
     const {
       offsetX,
       offsetY
@@ -1274,6 +1373,8 @@ function ClassroomView({
       }
       if (moved) {
         const drop = getSeatDropState(lastPos);
+        // 关键算法：拖拽结束时只把当前 seat 的 x/y 写回数组，
+        // 避免整张画布重新生成一套新对象。
         saveSeats(seats.map(s => s.id === seat.id ? {
           ...s,
           x: drop.x,
@@ -1281,6 +1382,10 @@ function ClassroomView({
           row: drop.row,
           col: drop.col
         } : s));
+        setDropPulse({
+          id: seat.id,
+          key: Date.now()
+        });
       }
       setDragId(null);
       setDragPreviewPos(null);
@@ -1297,7 +1402,7 @@ function ClassroomView({
     event.preventDefault();
     setPowerMenu(null);
     const canvasRect = canvas.getBoundingClientRect();
-    const start = toCanvasPointerPos(event, canvasRect, viewport);
+    const start = toCanvasPointerPos(event, canvasRect, viewport, canvas);
     const updateSelection = current => {
       const left = Math.min(start.x, current.x);
       const top = Math.min(start.y, current.y);
@@ -1318,7 +1423,7 @@ function ClassroomView({
       setSelectedSeatIds(ids);
     };
     const onMove = moveEvent => {
-      updateSelection(toCanvasPointerPos(moveEvent, canvasRect, viewport));
+      updateSelection(toCanvasPointerPos(moveEvent, canvasRect, viewport, canvas));
     };
     const onUp = () => {
       setSelectionBox(null);
@@ -1679,6 +1784,8 @@ function ClassroomView({
       hour12: false
     }) : '';
   };
+  const selectedSeatIdSet = useMemo(() => new Set(selectedSeatIds), [selectedSeatIds]);
+  const onlineIpSet = useMemo(() => new Set(onlineIPs), [onlineIPs]);
   const renderSeat = seat => {
     const isOnline = onlineIPs.includes(seat.ip);
     const alerts = recentAlerts[seat.ip] || [];
@@ -1714,16 +1821,16 @@ function ClassroomView({
     }) : /*#__PURE__*/React.createElement("div", {
       className: "absolute inset-0 flex items-center justify-center bg-slate-950/80 text-center text-[10px] text-slate-400 sm:text-[11px]"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", {
-      className: "fas fa-desktop mb-2 block text-lg text-slate-500"
+      className: "fas fa-desktop mb-2 block text-lg text-slate-300"
     }), /*#__PURE__*/React.createElement("div", null, monitorEnabled ? '等待截图…' : '监控已关闭'))), /*#__PURE__*/React.createElement("div", {
       className: "pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/45"
     }), /*#__PURE__*/React.createElement("div", {
-      className: "pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/10"
+      className: "pointer-events-none absolute inset-0 ring-1 ring-inset ring-slate-900/5"
     }), /*#__PURE__*/React.createElement("div", {
       className: "pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/50 to-transparent"
     }), /*#__PURE__*/React.createElement("button", {
       onClick: () => handleDelete(seat.id),
-      className: "absolute top-2 right-2 z-20 hidden h-6 w-6 items-center justify-center rounded-full border border-white/15 bg-black/35 text-[10px] text-white/85 backdrop-blur-sm transition-colors hover:bg-red-500 hover:text-white group-hover:flex"
+      className: "absolute top-2 right-2 z-20 hidden h-6 w-6 items-center justify-center rounded-full border border-red-100 bg-white text-[10px] text-red-500 shadow-sm transition-colors hover:bg-red-500 hover:text-white group-hover:flex"
     }, /*#__PURE__*/React.createElement("i", {
       className: "fas fa-xmark text-[10px]"
     })), /*#__PURE__*/React.createElement("div", {
@@ -1731,23 +1838,23 @@ function ClassroomView({
     }, /*#__PURE__*/React.createElement("div", {
       className: "min-w-0"
     }, /*#__PURE__*/React.createElement("div", {
-      className: `mb-1 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] backdrop-blur-sm ${isOnline ? 'border-emerald-200/35 bg-emerald-300/16 text-emerald-100' : 'border-white/12 bg-black/25 text-slate-200'}`
+      className: `mb-1 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] backdrop-blur-sm ${isOnline ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500'}`
     }, /*#__PURE__*/React.createElement("span", {
-      className: `h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.8)]' : 'bg-slate-400'}`
+      className: `h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-slate-400'}`
     }), isOnline ? 'ONLINE' : 'OFFLINE'), /*#__PURE__*/React.createElement("div", {
       className: "truncate text-[11px] font-black tracking-[0.04em] text-white sm:text-[13px] cursor-text drop-shadow",
       title: `${seat.name || '未命名'}\n${seat.studentId ? '学号: ' + seat.studentId : ''}\n${seat.ip}`,
       onDoubleClick: () => startEdit(seat)
     }, seat.name || /*#__PURE__*/React.createElement("span", {
-      className: "italic text-slate-300"
+      className: "italic text-slate-400"
     }, "\u53CC\u51FB\u547D\u540D")), seat.studentId && /*#__PURE__*/React.createElement("div", {
-      className: "mt-0.5 truncate text-[9px] font-medium text-sky-100/95 drop-shadow"
+      className: "mt-0.5 truncate text-[9px] font-medium text-blue-600"
     }, "#", seat.studentId)), /*#__PURE__*/React.createElement("div", {
-      className: "rounded-full border border-white/12 bg-black/30 px-2 py-0.5 text-[9px] font-mono text-white/85 backdrop-blur-sm"
+      className: "rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[9px] font-mono text-slate-500 shadow-sm"
     }, getSeatCoordLabel(seat))), /*#__PURE__*/React.createElement("div", {
       className: "absolute left-2 right-2 bottom-2 z-10 space-y-1.5"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "truncate rounded-xl border border-white/10 bg-black/35 px-2 py-1.5 font-mono text-[8px] text-white/90 backdrop-blur-sm sm:text-[9px]"
+      className: "truncate rounded-xl border border-slate-200 bg-white/90 px-2 py-1.5 font-mono text-[8px] text-slate-600 shadow-sm sm:text-[9px]"
     }, seat.ip), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center justify-between gap-2"
     }, lastAlert && alertIcons[lastAlert.type] ? /*#__PURE__*/React.createElement("div", {
@@ -1757,15 +1864,59 @@ function ClassroomView({
     }), /*#__PURE__*/React.createElement("span", {
       className: "truncate"
     }, alertIcons[lastAlert.type].label)) : /*#__PURE__*/React.createElement("div", {
-      className: "inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[8px] text-slate-200 backdrop-blur-sm sm:text-[9px]"
+      className: "inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-[8px] text-slate-500 shadow-sm sm:text-[9px]"
     }, /*#__PURE__*/React.createElement("i", {
       className: "fas fa-wave-square"
     }), /*#__PURE__*/React.createElement("span", null, screenshot?.capturedAt ? '截图已更新' : '状态正常')), /*#__PURE__*/React.createElement("div", {
       className: "text-[8px] text-white/70 sm:text-[9px] drop-shadow text-right truncate"
     }, formatCapturedTime(screenshot?.capturedAt)))));
   };
+  const renderSeatCard = seat => {
+    const isOnline = onlineIpSet.has(seat.ip);
+    const alerts = recentAlerts[seat.ip] || [];
+    const lastAlert = alerts[alerts.length - 1];
+    const screenshot = studentScreenshots[seat.ip] || null;
+    const isSelected = selectedSeatIdSet.has(seat.id);
+    const isDragging = dragId === seat.id;
+    const pos = getSeatRenderPos(seat);
+    const coordLabel = getSeatCoordLabel(seat);
+    const alertMeta = lastAlert && alertIcons[lastAlert.type] ? alertIcons[lastAlert.type] : null;
+    return /*#__PURE__*/React.createElement(SeatCanvasCard, {
+      key: seat.id,
+      seat: seat,
+      position: pos,
+      coordLabel: coordLabel,
+      isOnline: isOnline,
+      isSelected: isSelected,
+      isDragging: isDragging,
+      hasSnapshot: Boolean(screenshot?.dataUrl),
+      lastAlertType: lastAlert?.type || '',
+      lastAlertLabel: alertMeta?.label || '',
+      lastAlertColor: alertMeta?.color || '',
+      lastAlertIcon: alertMeta?.icon || '',
+      screenshot: screenshot,
+      capturedAtLabel: formatCapturedTime(screenshot?.capturedAt),
+      monitorEnabled: monitorEnabled,
+      dropPulseKey: dropPulse?.id === seat.id ? dropPulse.key : 0,
+      onMouseDown: e => handleSeatMouseDown(e, seat),
+      onContextMenu: e => openPowerMenuForSeats(e, isSelected ? getSelectedSeats() : [seat]),
+      onCardClick: e => {
+        if (e.ctrlKey || e.metaKey) {
+          toggleSeatSelected(seat, true);
+          return;
+        }
+        toggleSeatSelected(seat, false);
+        if (screenshot?.dataUrl) setPreviewSeat({
+          seat,
+          screenshot
+        });
+      },
+      onDelete: () => handleDelete(seat.id),
+      onStartEdit: startEdit
+    });
+  };
   const renderList = () => /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass-light flex-1 overflow-hidden rounded-[28px] border border-white/10"
+    className: "flex-1 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm"
   }, /*#__PURE__*/React.createElement("div", {
     className: "h-full overflow-auto px-3 py-3 sm:px-5 sm:py-4"
   }, /*#__PURE__*/React.createElement("table", {
@@ -1859,7 +2010,7 @@ function ClassroomView({
     } = getCanvasGuides();
     return /*#__PURE__*/React.createElement("div", {
       ref: seatCanvasViewportRef,
-      className: "min-h-0 flex-1 overflow-auto"
+      className: "min-h-0 flex-1 overflow-auto rounded-[16px]"
     }, /*#__PURE__*/React.createElement("div", {
       ref: seatCanvasRef,
       className: "relative mx-auto",
@@ -1875,9 +2026,15 @@ function ClassroomView({
         if (targets.length > 0) openPowerMenuForSeats(event, targets);
       }
     }, /*#__PURE__*/React.createElement("div", {
-      className: `pointer-events-none absolute inset-0 rounded-[24px] ${getCanvasGridClass()}`,
-      style: getCanvasGridStyle()
-    }), seats.map(renderSeat), selectionBox && /*#__PURE__*/React.createElement("div", {
+      className: `pointer-events-none absolute inset-0 rounded-[16px] ${getCanvasGridClass()}`,
+      style: {
+        ...getCanvasGridStyle(),
+        backgroundColor: 'transparent',
+        backgroundImage: getCanvasGridStyle().backgroundImage
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "pointer-events-none absolute inset-0 rounded-[16px] shadow-[inset_0_0_0_1px_rgba(226,232,240,0.75)]"
+    }), seats.map(renderSeatCard), selectionBox && /*#__PURE__*/React.createElement("div", {
       className: "pointer-events-none absolute rounded-xl border border-sky-200/80 bg-sky-300/18 shadow-[0_0_0_1px_rgba(125,211,252,0.18)]",
       style: {
         left: `${selectionBox.left}px`,
@@ -1887,263 +2044,205 @@ function ClassroomView({
       }
     })));
   };
-  const rootClassName = standalone ? 'teacher-shell-page relative flex h-full overflow-hidden p-2' : `teacher-shell-page fixed inset-0 ${window.__getTeacherLayerClass?.('overlay') || 'z-[10000]'} flex items-center justify-center overflow-hidden bg-black/55 p-2`;
-  const shellClassName = standalone ? 'teacher-glass-dark teacher-glass-enter teacher-borderless relative flex h-full w-full flex-col overflow-hidden rounded-[24px]' : 'teacher-glass-dark teacher-glass-enter teacher-borderless relative flex h-[94vh] w-[97vw] max-w-[1500px] flex-col overflow-hidden rounded-[28px]';
+  const rootClassName = standalone ? 'relative flex h-full overflow-hidden bg-[#f6f8fc] p-2' : `fixed inset-0 ${window.__getTeacherLayerClass?.('overlay') || 'z-[10000]'} flex items-center justify-center overflow-hidden bg-slate-950/35 p-2 backdrop-blur-sm`;
+  const shellClassName = standalone ? 'relative flex h-full w-full flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-[#f6f8fc] shadow-sm' : 'relative flex h-[94vh] w-[97vw] max-w-[1500px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-[#f6f8fc] shadow-2xl';
   return /*#__PURE__*/React.createElement("div", {
     className: rootClassName,
     onClick: standalone ? undefined : handleClose
   }, /*#__PURE__*/React.createElement("div", {
-    className: "pointer-events-none absolute inset-0 opacity-90"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "absolute -top-24 left-[8%] h-64 w-64 rounded-full bg-sky-400/18 blur-3xl"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "absolute right-[10%] top-[12%] h-72 w-72 rounded-full bg-emerald-400/14 blur-3xl"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "absolute bottom-[8%] left-[20%] h-56 w-56 rounded-full bg-indigo-400/12 blur-3xl"
-  })), /*#__PURE__*/React.createElement("div", {
     className: shellClassName,
     onClick: e => e.stopPropagation()
   }, /*#__PURE__*/React.createElement("div", {
-    className: "pointer-events-none absolute inset-x-0 top-0 h-36 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_72%)]"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "relative z-[1] flex flex-col gap-3 p-3 sm:p-4"
+    className: "relative z-[1] flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass-light teacher-borderless flex flex-col gap-2.5 rounded-[28px] px-4 py-3 sm:px-5 sm:py-3.5",
+    className: "rounded-[24px] border border-slate-200 bg-white px-4 py-3 shadow-sm",
     style: standalone ? {
       WebkitAppRegion: 'drag'
     } : undefined,
     onMouseDown: handleTitlebarMouseDown,
     onDoubleClick: handleTitlebarDoubleClick
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "min-w-0"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "mb-1.5 inline-flex items-center gap-2 rounded-full border border-sky-200/20 bg-sky-300/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-sky-100"
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-chalkboard"
-  }), "Classroom Monitor"), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2.5"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex h-9 w-9 items-center justify-center rounded-2xl border border-white/16 bg-white/10 text-sky-100 shadow-[0_12px_24px_rgba(56,189,248,0.14)]"
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-chalkboard-teacher"
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "min-w-0"
-  }, /*#__PURE__*/React.createElement("h2", {
-    className: "truncate text-lg sm:text-xl font-black tracking-[0.04em] text-white"
-  }, "\u673A\u623F\u89C6\u56FE"), /*#__PURE__*/React.createElement("p", {
-    className: "mt-0.5 text-xs text-slate-300"
-  }, "\u67E5\u770B\u7EC8\u7AEF\u5728\u7EBF\u3001\u544A\u8B66\u4E0E\u5EA7\u4F4D\u7F16\u6392\u3002")))), /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-wrap items-center gap-2 lg:justify-end",
-    style: standalone ? {
-      WebkitAppRegion: 'no-drag'
-    } : undefined,
-    "data-window-control": standalone ? 'true' : undefined
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "rounded-full border border-emerald-200/24 bg-emerald-300/14 px-3 py-1 text-[11px] font-bold text-emerald-100"
-  }, "\u5728\u7EBF ", onlineSeatCount), /*#__PURE__*/React.createElement("span", {
-    className: "rounded-full border border-white/12 bg-white/8 px-3 py-1 text-[11px] font-bold text-slate-200"
-  }, "\u79BB\u7EBF ", offlineSeatCount), /*#__PURE__*/React.createElement("span", {
-    className: "rounded-full border border-white/12 bg-white/8 px-3 py-1 text-[11px] font-bold text-slate-200"
-  }, "\u5EA7\u4F4D ", seats.length), /*#__PURE__*/React.createElement("span", {
-    className: "rounded-full border border-amber-200/20 bg-amber-300/10 px-3 py-1 text-[11px] font-bold text-amber-100"
-  }, "\u544A\u8B66 ", alertSeatCount), /*#__PURE__*/React.createElement("span", {
-    className: "rounded-full border border-sky-200/20 bg-sky-300/10 px-3 py-1 text-[11px] font-bold text-sky-100"
-  }, "\u7F16\u6392 Free Canvas"), standalone && /*#__PURE__*/React.createElement(WindowControls, null))), /*#__PURE__*/React.createElement("div", {
-    className: "mt-2.5 border-t border-white/10 pt-2.5",
+    className: "flex flex-wrap items-center gap-2",
     style: standalone ? {
       WebkitAppRegion: 'no-drag'
     } : undefined,
     "data-window-control": standalone ? 'true' : undefined
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"
+    className: "mr-2 min-w-0 flex-1"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-wrap items-center gap-2 sm:gap-3 min-w-0"
-  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex min-w-0 items-center gap-2"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-display text-blue-600"
+  }), /*#__PURE__*/React.createElement("h2", {
+    className: "truncate text-lg font-black text-slate-950"
+  }, currentClassroom.name || '默认机房')), /*#__PURE__*/React.createElement("div", {
+    className: "mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500"
+  }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", {
+    className: "text-emerald-600"
+  }, onlineSeatCount), " \u5728\u7EBF"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", {
+    className: "text-slate-600"
+  }, offlineSeatCount), " \u79BB\u7EBF"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", {
+    className: "text-blue-600"
+  }, seats.length), " \u5EA7\u4F4D"), alertSeatCount > 0 && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", {
+    className: "text-amber-600"
+  }, alertSeatCount), " \u544A\u8B66"))), /*#__PURE__*/React.createElement("div", {
     className: "relative",
     ref: classroomMenuRef
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowClassroomMenu(!showClassroomMenu),
-    className: "teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium"
+    className: "flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50",
+    title: "\u5207\u6362\u673A\u623F"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-users mr-1.5"
+    className: "fas fa-door-open text-blue-500"
   }), /*#__PURE__*/React.createElement("span", {
-    className: "max-w-[150px] truncate"
+    className: "hidden max-w-[120px] truncate sm:inline"
   }, currentClassroom.name), /*#__PURE__*/React.createElement("i", {
-    className: `fas fa-chevron-down ml-2 text-xs transition-transform ${showClassroomMenu ? 'rotate-180' : ''}`
+    className: `fas fa-chevron-down text-[10px] text-slate-400 transition-transform ${showClassroomMenu ? 'rotate-180' : ''}`
   }))), /*#__PURE__*/React.createElement("div", {
-    className: "flex rounded-2xl overflow-hidden border border-white/10 bg-white/8"
+    className: "flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-1"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setViewMode('grid'),
-    className: `px-3 py-2 text-xs sm:text-sm transition-colors ${viewMode === 'grid' ? 'bg-sky-300/18 text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`,
-    title: "\u7F51\u683C\u89C6\u56FE"
+    className: `flex h-7 w-8 items-center justify-center rounded-lg text-xs transition-colors ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`,
+    title: "\u5EA7\u4F4D\u56FE"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-table-cells"
   })), /*#__PURE__*/React.createElement("button", {
     onClick: () => setViewMode('list'),
-    className: `px-3 py-2 text-xs sm:text-sm transition-colors ${viewMode === 'list' ? 'bg-sky-300/18 text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`,
-    title: "\u5217\u8868\u89C6\u56FE"
+    className: `flex h-7 w-8 items-center justify-center rounded-lg text-xs transition-colors ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`,
+    title: "\u5217\u8868"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-list"
   }))), /*#__PURE__*/React.createElement("button", {
     onClick: () => handlePodiumAtTopChange(!currentPodiumTop),
-    className: "teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium",
-    title: currentPodiumTop ? '讲台在上，点击切换到底部' : '讲台在下，点击切换到顶部'
+    className: "flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50",
+    title: currentPodiumTop ? '讲台在上' : '讲台在下'
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-chalkboard mr-1.5"
-  }), currentPodiumTop ? '讲台在上' : '讲台在下')), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2 flex-wrap justify-end w-full xl:w-auto"
-  }, /*#__PURE__*/React.createElement("button", {
-    className: `${monitorEnabled ? 'teacher-liquid-primary' : 'teacher-liquid-button'} flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors cursor-default`,
-    title: "\u5F00\u542F\u6216\u5173\u95ED\u5B66\u751F\u673A\u76D1\u63A7"
+    className: "fas fa-chalkboard text-blue-500"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "hidden sm:inline"
+  }, currentPodiumTop ? '讲台上' : '讲台下')), /*#__PURE__*/React.createElement("div", {
+    className: `hidden h-9 items-center gap-2 rounded-xl border px-3 text-xs font-bold sm:flex ${monitorEnabled ? 'border-blue-100 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500'}`
   }, /*#__PURE__*/React.createElement("i", {
-    className: `fas ${monitorEnabled ? 'fa-eye' : 'fa-eye-slash'} mr-1.5`
-  }), monitorEnabled ? `监控中 ${monitorIntervalSec}s` : '开启监控'), /*#__PURE__*/React.createElement("button", {
+    className: `fas ${monitorEnabled ? 'fa-eye' : 'fa-eye-slash'}`
+  }), monitorEnabled ? `监控 ${monitorIntervalSec}s` : '监控关闭'), /*#__PURE__*/React.createElement("button", {
     onClick: handleAutoImport,
     disabled: autoImporting,
-    className: "teacher-liquid-primary flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-colors",
+    className: "flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-bold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60",
     title: "\u81EA\u52A8\u68C0\u6D4B\u5728\u7EBF\u5B66\u751F\u5E76\u6DFB\u52A0\u5230\u5EA7\u4F4D\u8868"
   }, /*#__PURE__*/React.createElement("i", {
-    className: `fas ${autoImporting ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} mr-1.5`
-  }), "\u81EA\u52A8\u5BFC\u5165"), /*#__PURE__*/React.createElement("div", {
+    className: `fas ${autoImporting ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "hidden sm:inline"
+  }, autoImporting ? '导入中' : '自动导入')), /*#__PURE__*/React.createElement("div", {
     className: "relative",
     ref: moreMenuRef
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowMoreMenu(!showMoreMenu),
-    className: `teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium ${showMoreMenu ? 'text-white bg-white/18' : 'text-slate-300'}`
+    className: `flex h-9 w-9 items-center justify-center rounded-xl border text-xs transition-colors ${showMoreMenu ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`,
+    title: "\u66F4\u591A"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-ellipsis-vertical mr-1.5"
-  }), "\u66F4\u591A")), /*#__PURE__*/React.createElement("button", {
+    className: "fas fa-ellipsis-vertical"
+  }))), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowAddForm(v => !v),
-    className: "teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium"
+    className: "flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50",
+    title: "\u624B\u52A8\u6DFB\u52A0"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-plus mr-1.5"
-  }), "\u624B\u52A8\u6DFB\u52A0"), !standalone && /*#__PURE__*/React.createElement("button", {
+    className: "fas fa-plus text-blue-500"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "hidden sm:inline"
+  }, "\u6DFB\u52A0")), !standalone && /*#__PURE__*/React.createElement("button", {
     onClick: handleClose,
-    className: "w-10 h-10 flex items-center justify-center rounded-2xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors border border-white/10 bg-white/8"
+    className: "flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-xmark text-lg"
-  })))))), showAddForm && /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass rounded-[26px] px-4 py-3 sm:px-5"
+    className: "fas fa-xmark"
+  })), standalone && /*#__PURE__*/React.createElement(WindowControls, null))), showAddForm && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-[20px] border border-slate-200 bg-white p-3 shadow-sm"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-wrap items-center gap-2 sm:gap-3"
+    className: "grid grid-cols-2 gap-2 md:grid-cols-[1.3fr_1fr_1fr_1.2fr_96px_96px_auto_auto]"
   }, /*#__PURE__*/React.createElement("input", {
     value: addIp,
     onChange: e => setAddIp(e.target.value),
     placeholder: "IP \u5730\u5740",
-    className: "w-28 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-xs text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-40 sm:text-sm"
+    className: "rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-300 focus:bg-white"
   }), /*#__PURE__*/React.createElement("input", {
     value: addName,
     onChange: e => setAddName(e.target.value),
     placeholder: "\u5B66\u751F\u59D3\u540D",
-    className: "w-24 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-xs text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-32 sm:text-sm"
+    className: "rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-300 focus:bg-white"
   }), /*#__PURE__*/React.createElement("input", {
     value: addStudentId,
     onChange: e => setAddStudentId(e.target.value),
     placeholder: "\u5B66\u53F7",
-    className: "hidden w-28 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-sm text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:block"
+    className: "rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-300 focus:bg-white"
   }), /*#__PURE__*/React.createElement("input", {
     value: addMac,
     onChange: e => setAddMac(e.target.value),
     placeholder: "MAC",
-    className: "hidden w-36 rounded-2xl border border-white/18 bg-slate-950/45 px-3 py-2 text-sm text-slate-100 placeholder-slate-300 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 md:block"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "text-xs text-slate-300 sm:text-sm"
-  }, "\u884C"), /*#__PURE__*/React.createElement("input", {
+    className: "rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-300 focus:bg-white"
+  }), /*#__PURE__*/React.createElement("input", {
     type: "number",
     min: "1",
     value: addRow,
     onChange: e => setAddRow(e.target.value),
-    className: "w-14 rounded-2xl border border-white/18 bg-slate-950/45 px-2 py-2 text-center text-xs text-slate-100 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-16 sm:text-sm"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "text-xs text-slate-300 sm:text-sm"
-  }, "\u5217"), /*#__PURE__*/React.createElement("input", {
+    "aria-label": "\u884C",
+    className: "rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-300 focus:bg-white"
+  }), /*#__PURE__*/React.createElement("input", {
     type: "number",
     min: "1",
     value: addCol,
     onChange: e => setAddCol(e.target.value),
-    className: "w-14 rounded-2xl border border-white/18 bg-slate-950/45 px-2 py-2 text-center text-xs text-slate-100 outline-none transition-colors focus:border-sky-300/80 focus:bg-slate-950/60 focus:ring-2 focus:ring-sky-300/25 sm:w-16 sm:text-sm"
+    "aria-label": "\u5217",
+    className: "rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-300 focus:bg-white"
   }), /*#__PURE__*/React.createElement("button", {
-    onClick: handleAddSeat,
-    className: "teacher-liquid-primary rounded-2xl px-4 py-2 text-xs font-bold transition-colors sm:text-sm"
-  }, "\u6DFB\u52A0"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowAddForm(false),
-    className: "teacher-liquid-button rounded-2xl px-3 py-2 text-xs transition-colors sm:text-sm"
-  }, "\u53D6\u6D88"))), showAddClassroom && /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass rounded-[26px] px-4 py-3 sm:px-5"
+    className: "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+  }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleAddSeat,
+    className: "rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700"
+  }, "\u6DFB\u52A0"))), showAddClassroom && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-[20px] border border-blue-100 bg-white p-3 shadow-sm"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col gap-3 sm:flex-row sm:items-center"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex h-10 w-10 items-center justify-center rounded-2xl border border-white/14 bg-white/10 text-sky-100"
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-users"
-  })), /*#__PURE__*/React.createElement("input", {
+    className: "flex flex-col gap-2 sm:flex-row sm:items-center"
+  }, /*#__PURE__*/React.createElement("input", {
     value: newClassName,
     onChange: e => setNewClassName(e.target.value),
     placeholder: "\u8F93\u5165\u73ED\u7EA7\u540D\u79F0\uFF0C\u4F8B\u5982\uFF1A\u9AD8\u4E00 1 \u73ED",
-    className: "flex-1 rounded-2xl border border-white/14 bg-white/8 px-4 py-2 text-sm text-white placeholder-slate-400 outline-none focus:border-sky-300",
+    className: "min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-300 focus:bg-white",
     autoFocus: true,
     onKeyDown: e => {
       if (e.key === 'Enter') handleCreateClassroom();
       if (e.key === 'Escape') setShowAddClassroom(false);
     }
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2 sm:justify-end"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: handleCreateClassroom,
-    className: "teacher-liquid-primary rounded-2xl px-4 py-2 text-sm font-bold transition-colors"
-  }, "\u521B\u5EFA"), /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowAddClassroom(false),
-    className: "teacher-liquid-button rounded-2xl px-3 py-2 text-sm transition-colors"
-  }, "\u53D6\u6D88")))), importError && /*#__PURE__*/React.createElement("div", {
-    className: "rounded-[24px] border border-red-400/24 bg-red-400/12 px-4 py-3 text-sm text-red-100 shadow-[0_16px_34px_rgba(127,29,29,0.18)]"
+    className: "rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+  }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleCreateClassroom,
+    className: "rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+  }, "\u521B\u5EFA"))), importError && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-[18px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-3"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-triangle-exclamation text-red-300"
+    className: "fas fa-triangle-exclamation text-red-500"
   }), /*#__PURE__*/React.createElement("span", {
     className: "min-w-0 flex-1"
   }, importError), /*#__PURE__*/React.createElement("button", {
     onClick: () => setImportError(null),
-    className: "text-red-200 hover:text-white transition-colors"
+    className: "text-red-500 hover:text-red-700"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-xmark"
   })))), /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass-light teacher-borderless flex items-center gap-4 rounded-[24px] px-4 py-3 text-[11px] text-slate-300 sm:text-xs"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "flex items-center gap-1.5"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "w-2.5 h-2.5 rounded-full bg-green-400 inline-block"
-  }), "\u5728\u7EBF"), /*#__PURE__*/React.createElement("span", {
-    className: "flex items-center gap-1.5"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "w-2.5 h-2.5 rounded-full bg-slate-500 inline-block"
-  }), "\u79BB\u7EBF"), /*#__PURE__*/React.createElement("span", {
-    className: "hidden sm:flex items-center gap-1.5"
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-compress text-orange-400"
-  }), "\u9000\u51FA\u5168\u5C4F"), /*#__PURE__*/React.createElement("span", {
-    className: "hidden sm:flex items-center gap-1.5"
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-eye-slash text-red-400"
-  }), "\u5207\u6362\u9875\u9762"), /*#__PURE__*/React.createElement("span", {
-    className: "hidden sm:flex items-center gap-1.5"
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-desktop text-sky-300"
-  }), monitorEnabled ? `缩略图 ${monitorIntervalSec}s 更新` : '监控关闭'), /*#__PURE__*/React.createElement("span", {
-    className: "ml-auto hidden text-slate-400 lg:inline"
-  }, "\u62D6\u62FD\u5EA7\u4F4D\u53EF\u8C03\u6574\u4F4D\u7F6E\uFF0C\u70B9\u51FB\u59D3\u540D\u53EF\u5FEB\u901F\u7F16\u8F91\u5B66\u751F\u4FE1\u606F\u3002")), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 min-h-0"
+    className: "min-h-0 flex-1"
   }, viewMode === 'list' ? /*#__PURE__*/React.createElement("div", {
     className: "h-full min-h-0"
   }, renderList()) : /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass-light teacher-borderless flex h-full min-h-0 flex-col rounded-[30px] p-2.5 sm:p-4"
+    className: "flex h-full min-h-0 flex-col rounded-[20px] border border-slate-200 bg-slate-50 p-2"
   }, currentPodiumTop && /*#__PURE__*/React.createElement("div", {
-    className: "pb-3 shrink-0"
+    className: "shrink-0 pb-2"
   }, renderPodium()), renderSeatCanvas(), !currentPodiumTop && /*#__PURE__*/React.createElement("div", {
-    className: "pt-3 shrink-0"
-  }, renderPodium()))), previewSeat && createPortal(/*#__PURE__*/React.createElement("div", {
+    className: "shrink-0 pt-2"
+  }, renderPodium())))), previewSeat && createPortal(/*#__PURE__*/React.createElement("div", {
     className: `fixed inset-0 ${window.__getTeacherLayerClass?.('modal') || 'z-[10020]'} flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm`,
     onClick: () => setPreviewSeat(null)
   }, /*#__PURE__*/React.createElement("div", {
@@ -2170,7 +2269,7 @@ function ClassroomView({
     className: "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-right text-sm text-slate-200"
   }, formatCapturedDateTime(previewSeat.screenshot.capturedAt) ? `截图时间 ${formatCapturedDateTime(previewSeat.screenshot.capturedAt)}` : ''))), document.body), powerMenu && createPortal(/*#__PURE__*/React.createElement("div", {
     ref: powerMenuPopupRef,
-    className: `teacher-glass-dark rounded-[18px] py-2 ${window.__getTeacherLayerClass?.('popup') || 'z-[10040]'} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`,
+    className: `rounded-[18px] border border-slate-200 bg-white py-2 ${window.__getTeacherLayerClass?.('popup') || 'z-[10040]'} overflow-hidden shadow-xl`,
     style: getPowerMenuStyle(),
     onMouseDown: e => e.stopPropagation(),
     onClick: e => e.stopPropagation()
@@ -2178,7 +2277,7 @@ function ClassroomView({
     className: "px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400"
   }, "\u5DF2\u9009 ", powerMenu.seatIds.length, " \u53F0"), /*#__PURE__*/React.createElement("button", {
     onClick: () => openSeatDetail(seats.find(seat => seat.id === powerMenu.seatIds[0])),
-    className: "flex w-full items-center px-4 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+    className: "flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-blue-600"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-circle-info mr-2 w-5 text-center"
   }), "\u67E5\u770B\u8BE6\u7EC6\u4FE1\u606F"), /*#__PURE__*/React.createElement("div", {
@@ -2186,14 +2285,14 @@ function ClassroomView({
   }), POWER_CONTROL_ACTIONS.map(item => /*#__PURE__*/React.createElement("button", {
     key: item.action,
     onClick: () => sendPowerControl(item.action, seats.filter(seat => powerMenu.seatIds.includes(seat.id))),
-    className: "flex w-full items-center px-4 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+    className: "flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-blue-600"
   }, /*#__PURE__*/React.createElement("i", {
     className: `fas ${item.icon} mr-2 w-5 text-center`
   }), item.label))), document.body), detailSeat && createPortal(/*#__PURE__*/React.createElement("div", {
     className: `fixed inset-0 ${window.__getTeacherLayerClass?.('modal') || 'z-[10020]'} flex items-center justify-center bg-black/65 p-6 backdrop-blur-sm`,
     onClick: () => setDetailSeat(null)
   }, /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass-dark w-[92vw] max-w-lg rounded-[28px] border border-white/14 p-6 shadow-[0_28px_80px_rgba(2,6,23,0.45)]",
+    className: "w-[92vw] max-w-lg rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl",
     onClick: e => e.stopPropagation()
   }, /*#__PURE__*/React.createElement("div", {
     className: "mb-5 flex items-start justify-between gap-4"
@@ -2223,7 +2322,7 @@ function ClassroomView({
     className: "break-all font-mono text-slate-100"
   }, value)))))), document.body), showClassroomMenu && createPortal(/*#__PURE__*/React.createElement("div", {
     ref: classroomMenuPopupRef,
-    className: `teacher-glass-dark rounded-[22px] py-2 ${window.__getTeacherLayerClass?.('popup') || 'z-[10040]'} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`,
+    className: `rounded-[22px] border border-slate-200 bg-white py-2 ${window.__getTeacherLayerClass?.('popup') || 'z-[10040]'} overflow-hidden shadow-xl`,
     style: getPopupStyle(classroomMenuRef, {
       width: 256,
       align: 'left'
@@ -2231,7 +2330,7 @@ function ClassroomView({
     onMouseDown: e => e.stopPropagation(),
     onClick: e => e.stopPropagation()
   }, /*#__PURE__*/React.createElement("div", {
-    className: "px-3 py-2 border-b border-white/10 flex items-center justify-between"
+    className: "px-3 py-2 border-b border-slate-100 flex items-center justify-between"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xs font-bold text-slate-400 uppercase tracking-[0.18em]"
   }, "\u73ED\u7EA7\u5217\u8868"), /*#__PURE__*/React.createElement("button", {
@@ -2245,7 +2344,7 @@ function ClassroomView({
   }), "\u65B0\u5EFA")), Object.entries(classrooms).map(([id, cls]) => /*#__PURE__*/React.createElement("div", {
     key: id,
     onClick: () => handleSwitchClassroom(id),
-    className: `px-3 py-2.5 flex items-center justify-between group transition-colors cursor-pointer ${id === currentClassroomId ? 'bg-sky-300/16 text-sky-100' : 'hover:bg-white/10 text-slate-300'}`
+    className: `px-3 py-2.5 flex items-center justify-between group transition-colors cursor-pointer ${id === currentClassroomId ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-700'}`
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex-1 min-w-0"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2260,7 +2359,7 @@ function ClassroomView({
     className: "fas fa-trash-can text-xs"
   }))))), document.body), showMoreMenu && createPortal(/*#__PURE__*/React.createElement("div", {
     ref: moreMenuPopupRef,
-    className: `teacher-glass-dark rounded-[22px] py-2 ${window.__getTeacherLayerClass?.('popup') || 'z-[10040]'} overflow-hidden shadow-[0_24px_60px_rgba(2,6,23,0.4)]`,
+    className: `rounded-[22px] border border-slate-200 bg-white py-2 ${window.__getTeacherLayerClass?.('popup') || 'z-[10040]'} overflow-hidden shadow-xl`,
     style: getPopupStyle(moreMenuRef, {
       width: 208,
       align: 'right'
@@ -2280,7 +2379,7 @@ function ClassroomView({
     onClick: () => {
       fileInputRef.current && fileInputRef.current.click();
     },
-    className: "w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center"
+    className: "w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition-colors flex items-center"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-file-import w-5 mr-2 text-center"
   }), "\u5BFC\u5165\u5217\u8868"), /*#__PURE__*/React.createElement("button", {
@@ -2288,7 +2387,7 @@ function ClassroomView({
       handleExportCsv();
       setShowMoreMenu(false);
     },
-    className: "w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center"
+    className: "w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition-colors flex items-center"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-table-list w-5 mr-2 text-center"
   }), "\u5BFC\u51FA CSV"), /*#__PURE__*/React.createElement("button", {
@@ -2296,27 +2395,27 @@ function ClassroomView({
       handleExportJson();
       setShowMoreMenu(false);
     },
-    className: "w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center"
+    className: "w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition-colors flex items-center"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-file-export w-5 mr-2 text-center"
   }), "\u5BFC\u51FA JSON"), /*#__PURE__*/React.createElement("div", {
-    className: "h-px bg-white/10 my-1 mx-2"
+    className: "h-px bg-slate-100 my-1 mx-2"
   }), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       handleDownloadTemplate();
       setShowMoreMenu(false);
     },
-    className: "w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center"
+    className: "w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition-colors flex items-center"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-download w-5 mr-2 text-center"
-  }), "\u4E0B\u8F7D\u6A21\u677F")), document.body))), editingId && /*#__PURE__*/React.createElement("div", {
-    className: `fixed inset-0 bg-black/55 backdrop-blur-md flex items-center justify-center ${window.__getTeacherLayerClass?.('modal') || 'z-[10020]'}`,
+  }), "\u4E0B\u8F7D\u6A21\u677F")), document.body)), editingId && /*#__PURE__*/React.createElement("div", {
+    className: `fixed inset-0 bg-slate-950/35 backdrop-blur-sm flex items-center justify-center ${window.__getTeacherLayerClass?.('modal') || 'z-[10020]'}`,
     onClick: e => {
       e.stopPropagation();
       if (e.target === e.currentTarget) setEditingId(null);
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass-dark w-[92vw] max-w-md rounded-[30px] p-6 border border-white/14 shadow-[0_28px_80px_rgba(2,6,23,0.42)]"
+    className: "w-[92vw] max-w-md rounded-[30px] border border-slate-200 bg-white p-6 shadow-2xl"
   }, /*#__PURE__*/React.createElement("div", {
     className: "mb-5 flex items-center gap-3"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2356,10 +2455,10 @@ function ClassroomView({
     className: "flex justify-end gap-2 mt-6"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setEditingId(null),
-    className: "teacher-liquid-button rounded-2xl px-4 py-2 text-sm transition-colors"
+    className: "rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50"
   }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement("button", {
     onClick: commitEdit,
-    className: "teacher-liquid-primary rounded-2xl px-4 py-2 text-sm font-bold transition-colors"
+    className: "rounded-2xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700"
   }, "\u4FDD\u5B58")))));
 }
 
@@ -2499,12 +2598,18 @@ function CourseSelector({
   const [selectedId, setSelectedId] = useState(currentCourseId);
   const [showGuide, setShowGuide] = useState(false);
   const [guideContent, setGuideContent] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
   const [showSubmissionsBrowser, setShowSubmissionsBrowser] = useState(false);
   const [courseData, setCourseData] = useState({
     courses: [],
     folders: []
   });
+  const [activeTab, setActiveTab] = useState('home');
+  const [storageUsage, setStorageUsage] = useState(null);
+  const [settingsSection, setSettingsSection] = useState('classroom');
+  const [newPwd, setNewPwd] = useState('');
+  const [pwdStatus, setPwdStatus] = useState(null);
+  const [submissionDir, setSubmissionDir] = useState('');
+  const [submissionDirStatus, setSubmissionDirStatus] = useState(null);
   const [viewMode, setViewMode] = useState('grid');
   const [currentFolder, setCurrentFolder] = useState(null);
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
@@ -3122,153 +3227,419 @@ function CourseSelector({
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
+  useEffect(() => {
+    let disposed = false;
+    fetch('/api/storage-usage').then(res => res.json()).then(data => {
+      if (!disposed && data?.success) setStorageUsage(data);
+    }).catch(() => {});
+    return () => {
+      disposed = true;
+    };
+  }, []);
+  useEffect(() => {
+    let disposed = false;
+    fetch('/api/submission-config').then(res => res.json()).then(data => {
+      if (!disposed && data?.submissionsDir) setSubmissionDir(data.submissionsDir);
+    }).catch(() => {});
+    return () => {
+      disposed = true;
+    };
+  }, []);
+  const selectedCourse = courseData.courses.find(c => c.id === selectedId);
+  const totalFolders = courseData.folders.length;
+  const totalVisibleItems = folderItems.length + courseItems.length;
+  const rootCourseCount = courseData.courses.filter(c => !c.folderId || c.folderId === null || c.folderId === undefined).length;
+  const formatBytes = bytes => {
+    const value = Number(bytes);
+    if (!Number.isFinite(value) || value < 0) return '计算中';
+    if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`;
+    if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)} MB`;
+    if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${Math.round(value)} B`;
+  };
+  const storageLabel = storageUsage ? formatBytes(storageUsage.bytes) : '计算中';
+  const storagePercent = storageUsage ? Math.min(100, Math.max(4, Math.round((Number(storageUsage.bytes) || 0) / 1024 ** 3 * 10))) : 18;
+  const pendingItems = [{
+    icon: 'fa-calendar-check',
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50',
+    title: '今日授课准备',
+    detail: selectedCourse ? `已选择「${selectedCourse.title}」` : '到课件库选择课件后即可开始授课',
+    action: selectedCourse ? '已就绪' : '去选择',
+    onClick: () => setActiveTab('courses')
+  }, {
+    icon: 'fa-user-group',
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
+    title: '在线学生',
+    detail: `${studentCount || 0} 名学生已连接`,
+    action: '机房',
+    onClick: () => window.__LumeSyncOpenClassroomWindow?.()
+  }, {
+    icon: 'fa-folder-tree',
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
+    title: '课件整理',
+    detail: `${totalFolders} 个文件夹，${rootCourseCount} 个根目录课件`,
+    action: '课件库',
+    onClick: () => setActiveTab('courses')
+  }, {
+    icon: 'fa-clock-rotate-left',
+    color: 'text-violet-600',
+    bg: 'bg-violet-50',
+    title: '课堂日志',
+    detail: `${studentLog?.length || 0} 条学生动态`,
+    action: '记录'
+  }];
+  const summaryStats = [{
+    label: '课件总数',
+    value: courseData.courses.length,
+    suffix: '个',
+    icon: 'fa-layer-group',
+    tone: 'blue',
+    onClick: () => setActiveTab('courses')
+  }, {
+    label: '文件夹',
+    value: totalFolders,
+    suffix: '个',
+    icon: 'fa-folder',
+    tone: 'amber'
+  }, {
+    label: '在线学生',
+    value: studentCount || 0,
+    suffix: '人',
+    icon: 'fa-users',
+    tone: 'emerald',
+    onClick: () => window.__LumeSyncOpenClassroomWindow?.()
+  }, {
+    label: '课堂记录',
+    value: studentLog?.length || 0,
+    suffix: '条',
+    icon: 'fa-clipboard-list',
+    tone: 'violet'
+  }];
+  const quickActions = [{
+    label: '开始授课',
+    icon: 'fa-play',
+    onClick: handleStartCourse,
+    primary: true,
+    disabled: !selectedId
+  }, {
+    label: '导入课件',
+    icon: 'fa-file-import',
+    onClick: handleImportCourse,
+    hidden: !window.electronAPI?.importCourse
+  }, {
+    label: '新建文件夹',
+    icon: 'fa-folder-plus',
+    onClick: () => setShowNewFolderDialog(true)
+  }, {
+    label: '刷新资源',
+    icon: 'fa-arrows-rotate',
+    onClick: onRefresh
+  }, {
+    label: '课件教程',
+    icon: 'fa-book-open',
+    onClick: handleOpenGuide
+  }].filter(action => !action.hidden);
+  const toneClasses = {
+    blue: 'bg-blue-50 text-blue-600',
+    amber: 'bg-amber-50 text-amber-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
+    violet: 'bg-violet-50 text-violet-600'
+  };
+  const clampMonitorInterval = value => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 1;
+    const clamped = Math.min(5, Math.max(0.5, n));
+    return Math.round(clamped * 2) / 2;
+  };
+  const monitorIntervalValue = clampMonitorInterval(settings?.monitorIntervalSec);
+  const renderScaleValue = typeof settings?.renderScale === 'number' && Number.isFinite(settings.renderScale) ? settings.renderScale : 0.96;
+  const uiScaleValue = typeof settings?.uiScale === 'number' && Number.isFinite(settings.uiScale) ? settings.uiScale : 1.0;
+  const settingToggles = [{
+    key: 'forceFullscreen',
+    label: '强制学生全屏',
+    desc: '授课时让学生端保持课堂专注。',
+    icon: 'fa-expand'
+  }, {
+    key: 'syncFollow',
+    label: '学生跟随翻页',
+    desc: '教师翻页后学生端自动同步页面。',
+    icon: 'fa-rotate'
+  }, {
+    key: 'alertJoin',
+    label: '学生上线提醒',
+    desc: '学生进入课堂时显示提醒。',
+    icon: 'fa-user-plus'
+  }, {
+    key: 'alertLeave',
+    label: '学生离线提醒',
+    desc: '学生断开连接时显示提醒。',
+    icon: 'fa-user-minus'
+  }, {
+    key: 'alertFullscreenExit',
+    label: '退出全屏提醒',
+    desc: '学生退出全屏时记录异常。',
+    icon: 'fa-compress'
+  }, {
+    key: 'alertTabHidden',
+    label: '切换页面提醒',
+    desc: '学生切换窗口或隐藏页面时提示。',
+    icon: 'fa-eye-slash'
+  }, {
+    key: 'monitorEnabled',
+    label: '学生截图监控',
+    desc: '按设定间隔采集学生端屏幕缩略图。',
+    icon: 'fa-camera'
+  }];
+  const handleSetPassword = () => {
+    if (!newPwd.trim()) return;
+    const encoder = new TextEncoder();
+    const data = encoder.encode(newPwd.trim());
+    crypto.subtle.digest('SHA-256', data).then(buf => {
+      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      socket && socket.emit('set-admin-password', {
+        hash
+      });
+      setNewPwd('');
+      setPwdStatus('ok');
+      setTimeout(() => setPwdStatus(null), 3000);
+    }).catch(() => {
+      setPwdStatus('err');
+      setTimeout(() => setPwdStatus(null), 3000);
+    });
+  };
+  const handleChangeSubmissionDir = async (dir = submissionDir) => {
+    if (!dir.trim()) return;
+    try {
+      const response = await fetch('/api/submission-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          submissionsDir: dir.trim()
+        })
+      });
+      const result = await response.json();
+      setSubmissionDirStatus(result.success ? 'ok' : 'err');
+    } catch (_) {
+      setSubmissionDirStatus('err');
+    }
+    setTimeout(() => setSubmissionDirStatus(null), 3000);
+  };
+  const handleSelectSubmissionDir = async () => {
+    try {
+      const selectedDir = await window.electronAPI?.selectSubmissionDir?.();
+      if (selectedDir) {
+        setSubmissionDir(selectedDir);
+        await handleChangeSubmissionDir(selectedDir);
+      }
+    } catch (_) {
+      alert('无法选择目录');
+    }
+  };
+  const handleToggleDevTools = () => {
+    try {
+      if (window.electronAPI?.toggleDevTools) {
+        window.electronAPI.toggleDevTools();
+      } else {
+        alert('当前环境不支持打开调试面板');
+      }
+    } catch (_) {
+      alert('无法打开调试面板');
+    }
+  };
+  const handleOpenLogDir = async () => {
+    try {
+      await window.electronAPI?.openLogDir?.();
+    } catch (_) {
+      alert('无法打开日志目录');
+    }
+  };
   return /*#__PURE__*/React.createElement("div", {
-    className: "teacher-shell-page h-full text-white overflow-hidden relative p-3"
+    className: "h-full overflow-hidden relative bg-[#f6f8fc] text-slate-900 select-none"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass-light teacher-glass-enter teacher-borderless flex items-center justify-between px-4 py-2.5 rounded-[24px] shrink-0 relative z-30",
+    className: "h-[72px] border-b border-slate-200/80 bg-white/92 backdrop-blur-xl flex items-center justify-between px-6 relative z-30",
     style: {
       WebkitAppRegion: 'drag'
     },
     onMouseDown: event => window.__LumeSyncStartWindowDrag?.(event)
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2 text-white"
+    className: "flex items-center gap-4 min-w-0"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "h-10 w-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-sm"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-chalkboard-teacher text-sky-200 text-xl"
-  }), /*#__PURE__*/React.createElement("h1", {
-    className: "text-xl font-black text-white tracking-wide"
-  }, "\u6559\u5E08\u63A7\u5236\u53F0")), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2 text-white",
+    className: "fas fa-cubes-stacked text-lg"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0"
+  }, /*#__PURE__*/React.createElement("h1", {
+    className: "text-xl font-black tracking-tight text-slate-950"
+  }, "LumeSync \u6559\u5E08\u63A7\u5236\u53F0"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500 mt-0.5"
+  }, "\u8BFE\u4EF6\u3001\u73ED\u7EA7\u4E0E\u6388\u8BFE\u72B6\u6001\u4E00\u5C4F\u638C\u63E1"))), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3",
     style: {
       WebkitAppRegion: 'no-drag'
     },
     "data-window-control": "true"
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => window.__LumeSyncOpenClassroomWindow?.(),
-    className: "px-3 py-1.5 bg-sky-300/15 text-sky-100 rounded-full text-xs font-bold border border-sky-200/30 flex items-center hover:bg-sky-300/25 transition-colors",
-    title: "\u70B9\u51FB\u67E5\u770B\u673A\u623F\u89C6\u56FE"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "relative flex h-2 w-2 mr-1.5"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "relative inline-flex rounded-full h-2 w-2 bg-purple-500"
-  })), "\u5728\u7EBF\u5B66\u751F: ", studentCount), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowSettings(v => !v),
-    className: "teacher-liquid-button flex items-center px-2.5 py-1.5 rounded-xl text-xs",
-    title: "\u8BFE\u5802\u8BBE\u7F6E"
+    className: "hidden min-[1120px]:flex h-11 w-[420px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-400 shadow-inner",
+    title: "\u641C\u7D22\u5165\u53E3"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-gear text-sm"
-  })), /*#__PURE__*/React.createElement("span", {
-    className: "px-3 py-1.5 bg-white/12 text-slate-100 rounded-full text-xs font-bold border border-white/20"
-  }, "\u8001\u5E08\u7AEF (\u4E3B\u63A7)"), /*#__PURE__*/React.createElement(WindowControls, null))), /*#__PURE__*/React.createElement("div", {
-    className: "mt-3 flex h-[calc(100%-78px)] overflow-hidden gap-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass-dark teacher-glass-enter teacher-borderless w-64 rounded-[24px] overflow-y-auto shrink-0"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "p-2.5"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between mb-3 px-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-400 text-xs font-medium"
-  }, "\u6587\u4EF6\u5939")), /*#__PURE__*/React.createElement("div", {
-    className: "space-y-1"
-  }, /*#__PURE__*/React.createElement("div", {
-    onClick: () => setCurrentFolder(null),
-    className: `flex items-center px-3 py-2 rounded-lg cursor-pointer transition-colors ${!currentFolder ? 'bg-blue-500/20 text-blue-300' : 'text-slate-300 hover:bg-slate-700'}`
+    className: "fas fa-magnifying-glass text-slate-400"
+  }), /*#__PURE__*/React.createElement("span", null, "\u641C\u7D22\u8BFE\u4EF6\u3001\u8BFE\u7A0B\u3001\u73ED\u7EA7\u3001\u8D44\u6E90...")), /*#__PURE__*/React.createElement(WindowControls, null))), /*#__PURE__*/React.createElement("div", {
+    className: "flex h-[calc(100%-72px)] overflow-hidden"
+  }, /*#__PURE__*/React.createElement("aside", {
+    className: "w-[244px] shrink-0 border-r border-slate-200/80 bg-white/86 px-4 py-5"
+  }, /*#__PURE__*/React.createElement("nav", {
+    className: "space-y-2"
+  }, [['home', '首页', 'fa-house'], ['courses', '课件库', 'fa-folder-open'], ['classes', '班级管理', 'fa-users'], ['records', '授课记录', 'fa-clipboard-list'], ['resources', '资源中心', 'fa-box-archive'], ['submissions', '作业与提交', 'fa-square-check'], ['settings', '设置', 'fa-gear']].map(([tab, label, icon]) => /*#__PURE__*/React.createElement("button", {
+    key: label,
+    onClick: () => {
+      setActiveTab(tab);
+      if (tab === 'courses') setCurrentFolder(null);
+    },
+    className: `flex h-12 w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-bold transition-colors ${activeTab === tab ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-home mr-2 text-sm"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "text-sm"
-  }, "\u8BFE\u4EF6\u5E93")), /*#__PURE__*/React.createElement(FolderTreeNode, {
-    folders: courseData.folders,
-    parentId: null,
-    currentFolder: currentFolder,
-    dragOverFolder: dragOverFolder,
-    onFolderClick: setCurrentFolder,
-    onContextMenu: handleContextMenu,
-    onDragOver: handleDragOver,
-    onDragLeave: handleDragLeave,
-    onDrop: handleDrop,
-    courses: courseData.courses,
-    depth: 0,
-    expandedFolders: expandedFolders,
-    onToggleExpand: handleToggleExpand,
-    onDragStart: handleDragStart
-  })))), /*#__PURE__*/React.createElement("div", {
-    className: "teacher-glass-dark teacher-glass-enter teacher-borderless flex-1 flex flex-col overflow-hidden rounded-[24px]"
+    className: `fas ${icon} w-5 text-center`
+  }), /*#__PURE__*/React.createElement("span", null, label)))), /*#__PURE__*/React.createElement("div", {
+    className: "mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between px-5 py-3 border-b border-white/10 shrink-0"
+    className: "flex items-center justify-between text-sm font-bold text-slate-700"
+  }, /*#__PURE__*/React.createElement("span", null, "\u8F6F\u4EF6\u5360\u7528"), /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-cloud text-blue-500"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "mt-3 h-2 rounded-full bg-slate-200 overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2 text-slate-100"
+    className: "h-full rounded-full bg-blue-600",
+    style: {
+      width: `${storagePercent}%`
+    }
+  })), /*#__PURE__*/React.createElement("p", {
+    className: "mt-2 text-xs text-slate-500"
+  }, storageLabel, "\uFF0C", storageUsage?.fileCount || 0, " \u4E2A\u6587\u4EF6"))), /*#__PURE__*/React.createElement("main", {
+    className: "flex-1 overflow-y-auto p-6"
+  }, activeTab === 'home' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("section", {
+    className: "grid gap-5 xl:grid-cols-[1fr_344px]"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm overflow-hidden relative"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "relative z-10 max-w-3xl"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-bold text-blue-600"
+  }, "\u4E0B\u5348\u597D\uFF0C\u8001\u5E08"), /*#__PURE__*/React.createElement("h2", {
+    className: "mt-2 text-3xl font-black tracking-tight text-slate-950"
+  }, "\u4ECA\u65E5\u8BFE\u5802\u5B89\u6392\u4E0E\u6559\u5B66\u6570\u636E\u4E00\u76EE\u4E86\u7136"), /*#__PURE__*/React.createElement("p", {
+    className: "mt-3 text-sm text-slate-500"
+  }, "\u9009\u62E9\u8BFE\u4EF6\u540E\u5373\u53EF\u5F00\u59CB\u6388\u8BFE\uFF0C\u4E5F\u53EF\u4EE5\u5148\u6574\u7406\u8D44\u6E90\u6216\u67E5\u770B\u5B66\u751F\u8FDE\u63A5\u72B6\u6001\u3002")), /*#__PURE__*/React.createElement("div", {
+    className: "relative z-10 mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+  }, summaryStats.map(stat => /*#__PURE__*/React.createElement("button", {
+    key: stat.label,
+    onClick: stat.onClick,
+    className: `rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all ${stat.onClick ? 'cursor-pointer hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md' : 'cursor-default'}`
+  }, /*#__PURE__*/React.createElement("div", {
+    className: `flex h-10 w-10 items-center justify-center rounded-xl ${toneClasses[stat.tone]}`
+  }, /*#__PURE__*/React.createElement("i", {
+    className: `fas ${stat.icon}`
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "mt-4 flex items-end gap-1"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-3xl font-black tracking-tight text-slate-950"
+  }, stat.value), /*#__PURE__*/React.createElement("span", {
+    className: "pb-1 text-sm text-slate-500"
+  }, stat.suffix)), /*#__PURE__*/React.createElement("p", {
+    className: "mt-1 text-sm text-slate-500"
+  }, stat.label)))), /*#__PURE__*/React.createElement("div", {
+    className: "pointer-events-none absolute right-8 top-8 hidden h-48 w-72 rounded-[32px] bg-gradient-to-br from-blue-50 via-cyan-50 to-white xl:block"
+  })), /*#__PURE__*/React.createElement("aside", {
+    className: "space-y-5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-black text-slate-950"
+  }, "\u8FD1\u671F\u5F85\u529E"), /*#__PURE__*/React.createElement("button", {
+    onClick: onRefresh,
+    className: "text-xs font-bold text-blue-600 hover:text-blue-700"
+  }, "\u5237\u65B0")), /*#__PURE__*/React.createElement("div", {
+    className: "mt-4 space-y-3"
+  }, pendingItems.map(item => /*#__PURE__*/React.createElement("button", {
+    key: item.title,
+    onClick: item.onClick,
+    className: `flex w-full items-center gap-3 rounded-2xl p-2 text-left transition-colors ${item.onClick ? 'hover:bg-slate-50' : 'cursor-default'}`
+  }, /*#__PURE__*/React.createElement("div", {
+    className: `flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.bg} ${item.color}`
+  }, /*#__PURE__*/React.createElement("i", {
+    className: `fas ${item.icon}`
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0 flex-1"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "truncate text-sm font-bold text-slate-800"
+  }, item.title), /*#__PURE__*/React.createElement("p", {
+    className: "truncate text-xs text-slate-500"
+  }, item.detail)), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs font-bold text-blue-600"
+  }, item.action)))))))), activeTab === 'courses' && /*#__PURE__*/React.createElement("section", {
+    className: "mt-5 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap items-center justify-between gap-3"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+    className: "text-lg font-black text-slate-950"
+  }, "\u6211\u7684\u8BFE\u4EF6\u4E0E\u8BFE\u7A0B"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 flex flex-wrap items-center text-sm text-slate-500"
+  }, getBreadcrumbs().map((crumb, idx) => /*#__PURE__*/React.createElement(React.Fragment, {
+    key: crumb.id ?? 'root'
+  }, idx > 0 && /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-chevron-right text-slate-300 text-xs mx-2"
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setCurrentFolder(crumb.id),
+    className: "font-medium hover:text-blue-600"
+  }, crumb.name))))), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setCurrentFolder(null),
     disabled: !currentFolder,
-    className: `flex items-center px-3 py-1.5 rounded text-sm transition-colors ${currentFolder ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`
+    className: `flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-bold transition-colors ${currentFolder ? 'border-slate-200 text-slate-700 hover:bg-slate-50' : 'border-slate-100 text-slate-300 cursor-not-allowed'}`
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-arrow-left mr-1.5"
+    className: "fas fa-arrow-left"
   }), "\u8FD4\u56DE"), /*#__PURE__*/React.createElement("div", {
-    className: "h-4 w-px bg-slate-600 mx-2"
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setSelectedId(null),
-    className: "flex items-center px-3 py-1.5 rounded text-slate-300 hover:bg-slate-700 text-sm transition-colors"
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-folder-open mr-1.5"
-  }), "\u8BFE\u4EF6\u9009\u62E9")), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2 text-slate-100"
+    className: "flex rounded-xl border border-slate-200 bg-slate-50 p-1"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setViewMode('grid'),
-    className: `p-2 rounded transition-colors ${viewMode === 'grid' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:bg-slate-700'}`,
+    className: `h-8 w-8 rounded-lg ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`,
     title: "\u5927\u56FE\u6807\u89C6\u56FE"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-th-large"
+    className: "fas fa-table-cells-large"
   })), /*#__PURE__*/React.createElement("button", {
     onClick: () => setViewMode('list'),
-    className: `p-2 rounded transition-colors ${viewMode === 'list' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:bg-slate-700'}`,
+    className: `h-8 w-8 rounded-lg ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`,
     title: "\u8BE6\u7EC6\u5217\u8868\u89C6\u56FE"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-list"
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "h-4 w-px bg-slate-600 mx-2"
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowNewFolderDialog(true),
-    className: "flex items-center px-3 py-1.5 bg-amber-400/80 hover:bg-amber-300 text-slate-950 rounded text-sm font-medium transition-colors"
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-folder-plus mr-1.5"
-  }), "\u65B0\u5EFA\u6587\u4EF6\u5939"), /*#__PURE__*/React.createElement("button", {
-    onClick: onRefresh,
-    className: "flex items-center px-3 py-1.5 teacher-liquid-button rounded text-sm transition-colors"
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-sync-alt mr-1.5"
-  }), "\u5237\u65B0"), /*#__PURE__*/React.createElement("button", {
+  }))), /*#__PURE__*/React.createElement("button", {
     onClick: handleDownloadSkill,
-    className: "flex items-center px-3 py-1.5 teacher-liquid-primary rounded text-sm font-medium transition-colors",
+    className: "hidden sm:flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700 hover:bg-slate-50",
     title: "\u4E0B\u8F7D AI \u8BFE\u4EF6\u751F\u6210 Skill \u6587\u4EF6"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-download mr-1.5"
-  }), "\u4E0B\u8F7D Skill"), /*#__PURE__*/React.createElement("button", {
-    onClick: handleOpenGuide,
-    className: "flex items-center px-3 py-1.5 teacher-liquid-button rounded text-sm transition-colors",
-    title: "\u67E5\u770B\u8BFE\u4EF6\u5F00\u53D1\u6559\u7A0B"
+    className: "fas fa-download text-blue-600"
+  }), "Skill"))), /*#__PURE__*/React.createElement("div", {
+    className: "mt-5 rounded-[24px] border border-slate-200 bg-slate-50 p-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap items-center gap-3"
+  }, quickActions.map(action => /*#__PURE__*/React.createElement("button", {
+    key: action.label,
+    onClick: action.onClick,
+    disabled: action.disabled,
+    className: `flex h-11 items-center justify-center gap-2 rounded-2xl border px-4 text-sm font-bold transition-colors ${action.primary ? action.disabled ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed' : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-white hover:text-blue-700'}`
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-book-open mr-1.5"
-  }), "\u6559\u7A0B"), window.electronAPI?.importCourse && /*#__PURE__*/React.createElement("button", {
-    onClick: handleImportCourse,
-    className: "flex items-center px-3 py-1.5 bg-emerald-500/80 hover:bg-emerald-400 text-white rounded text-sm font-medium transition-colors"
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-file-import mr-1.5"
-  }), "\u5BFC\u5165"))), /*#__PURE__*/React.createElement("div", {
-    className: "px-5 py-3 border-b border-white/10 flex items-center shrink-0"
-  }, getBreadcrumbs().map((crumb, idx) => /*#__PURE__*/React.createElement(React.Fragment, {
-    key: crumb.id
-  }, idx > 0 && /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-chevron-right text-slate-600 text-xs mx-2"
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setCurrentFolder(crumb.id),
-    className: "text-sm text-slate-300 hover:text-blue-400 transition-colors"
-  }, crumb.name)))), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 overflow-y-auto p-4"
+    className: `fas ${action.icon}`
+  }), /*#__PURE__*/React.createElement("span", null, action.label))))), /*#__PURE__*/React.createElement("div", {
+    className: "mt-5 min-h-[260px]"
   }, viewMode === 'grid' ? /*#__PURE__*/React.createElement("div", {
-    className: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
+    className: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
   }, folderItems.map(folder => /*#__PURE__*/React.createElement("div", {
     key: folder.id,
     draggable: true,
@@ -3278,45 +3649,51 @@ function CourseSelector({
     onDragOver: e => handleDragOver(e, folder),
     onDragLeave: handleDragLeave,
     onDrop: e => handleDrop(e, folder),
-    className: `relative flex flex-col items-center p-4 rounded-xl border-2 cursor-pointer transition-all ${dragOverFolder === folder.id ? 'bg-amber-500/20 border-amber-500/30' : draggedItem?.item?.id === folder.id ? 'opacity-50' : 'bg-white/10 border-white/10 hover:border-sky-300/40 hover:bg-white/15'}`
+    className: `relative min-h-[154px] cursor-pointer rounded-2xl border p-4 transition-all ${dragOverFolder === folder.id ? 'border-amber-300 bg-amber-50' : draggedItem?.item?.id === folder.id ? 'opacity-50' : 'border-slate-200 bg-white hover:border-amber-200 hover:shadow-md'}`
   }, /*#__PURE__*/React.createElement("div", {
-    className: "w-16 h-16 bg-amber-500/20 rounded-xl flex items-center justify-center text-3xl mb-3 border border-amber-500/30"
+    className: "flex items-start justify-between gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-100 bg-amber-50 text-2xl text-amber-500"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-folder text-amber-400"
+    className: "fas fa-folder"
   })), /*#__PURE__*/React.createElement("span", {
-    className: "text-white text-sm text-center font-medium truncate w-full"
-  }, folder.name), /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-500 text-xs mt-1"
-  }, courseData.courses.filter(c => c.folderId === folder.id).length + courseData.folders.filter(f => f.parentId === folder.id).reduce((sum, f) => sum + courseData.courses.filter(c => c.folderId === f.id).length, 0), " \u9879"))), courseItems.map(course => /*#__PURE__*/React.createElement("div", {
+    className: "rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-500"
+  }, courseData.courses.filter(c => c.folderId === folder.id).length + courseData.folders.filter(f => f.parentId === folder.id).reduce((sum, f) => sum + courseData.courses.filter(c => c.folderId === f.id).length, 0), " \u9879")), /*#__PURE__*/React.createElement("div", {
+    className: "mt-5"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "truncate text-base font-black text-slate-900"
+  }, folder.name), /*#__PURE__*/React.createElement("p", {
+    className: "mt-1 text-sm text-slate-500"
+  }, "\u53CC\u51FB\u8FDB\u5165\u6587\u4EF6\u5939")))), courseItems.map(course => /*#__PURE__*/React.createElement("div", {
     key: course.id,
     draggable: true,
     onClick: () => handleSelect(course.id),
     onContextMenu: e => handleContextMenu(e, course, 'course'),
     onDragStart: e => handleDragStart(e, course, 'course'),
-    className: `relative flex flex-col items-center p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedId === course.id ? 'bg-blue-500/20 border-blue-500' : draggedItem?.item?.id === course.id ? 'opacity-50' : 'bg-white/10 border-white/10 hover:border-sky-300/40 hover:bg-white/15'}`
+    className: `relative min-h-[176px] cursor-pointer rounded-2xl border p-4 transition-all ${selectedId === course.id ? 'border-blue-500 bg-blue-50 shadow-[0_18px_45px_rgba(37,99,235,0.16)]' : draggedItem?.item?.id === course.id ? 'opacity-50' : 'border-slate-200 bg-white hover:border-blue-200 hover:shadow-md'}`
   }, /*#__PURE__*/React.createElement("div", {
-    className: `w-16 h-16 rounded-xl bg-gradient-to-br ${course.color} flex items-center justify-center text-3xl mb-3 shadow-lg`
-  }, course.icon), /*#__PURE__*/React.createElement("span", {
-    className: "text-white text-sm text-center font-medium truncate w-full"
-  }, course.title), /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-500 text-xs mt-1 truncate w-full"
-  }, course.file), selectedId === course.id && /*#__PURE__*/React.createElement("div", {
-    className: "absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center"
+    className: "flex items-start justify-between gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: `flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${course.color || 'from-blue-500 to-cyan-400'} text-2xl shadow-sm`
+  }, course.icon), selectedId === course.id && /*#__PURE__*/React.createElement("div", {
+    className: "flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-check text-white text-xs"
+    className: "fas fa-check text-xs"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "mt-5"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "truncate text-base font-black text-slate-900"
+  }, course.title), /*#__PURE__*/React.createElement("p", {
+    className: "mt-1 truncate text-sm text-slate-500"
+  }, course.file)), /*#__PURE__*/React.createElement("div", {
+    className: "mt-4 h-1.5 rounded-full bg-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "h-full w-2/3 rounded-full bg-blue-500"
   }))))) : /*#__PURE__*/React.createElement("div", {
-    className: "space-y-2"
+    className: "overflow-hidden rounded-2xl border border-slate-200"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center px-3 py-2 bg-white/10 rounded-t-2xl border-b border-white/10 text-xs text-slate-400 font-medium"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-10"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1"
-  }, "\u540D\u79F0"), /*#__PURE__*/React.createElement("div", {
-    className: "w-32"
-  }, "\u7C7B\u578B"), /*#__PURE__*/React.createElement("div", {
-    className: "w-48"
-  }, "\u6587\u4EF6\u540D")), folderItems.map(folder => /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-[44px_1fr_120px_220px] items-center bg-slate-50 px-4 py-3 text-xs font-bold text-slate-500"
+  }, /*#__PURE__*/React.createElement("div", null), /*#__PURE__*/React.createElement("div", null, "\u540D\u79F0"), /*#__PURE__*/React.createElement("div", null, "\u7C7B\u578B"), /*#__PURE__*/React.createElement("div", null, "\u6587\u4EF6\u540D")), folderItems.map(folder => /*#__PURE__*/React.createElement("div", {
     key: folder.id,
     draggable: true,
     onDoubleClick: () => handleDoubleClick(folder, 'folder'),
@@ -3325,66 +3702,221 @@ function CourseSelector({
     onDragOver: e => handleDragOver(e, folder),
     onDragLeave: handleDragLeave,
     onDrop: e => handleDrop(e, folder),
-    className: `relative flex items-center px-3 py-3 rounded-lg cursor-pointer transition-colors ${dragOverFolder === folder.id ? 'bg-amber-500/20 border border-amber-500/30' : draggedItem?.item?.id === folder.id ? 'opacity-50' : 'bg-white/10 hover:bg-white/15'}`
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-10"
+    className: `grid grid-cols-[44px_1fr_120px_220px] items-center border-t border-slate-100 px-4 py-3 text-sm transition-colors ${dragOverFolder === folder.id ? 'bg-amber-50' : 'hover:bg-slate-50'}`
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-folder text-amber-400 text-xl"
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 text-white text-sm truncate"
+    className: "fas fa-folder text-xl text-amber-500"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "truncate font-bold text-slate-900"
   }, folder.name), /*#__PURE__*/React.createElement("div", {
-    className: "w-32 text-slate-400 text-sm"
+    className: "text-slate-500"
   }, "\u6587\u4EF6\u5939"), /*#__PURE__*/React.createElement("div", {
-    className: "w-48 text-slate-500 text-xs truncate"
+    className: "truncate text-xs text-slate-400"
   }, "-"))), courseItems.map(course => /*#__PURE__*/React.createElement("div", {
     key: course.id,
     draggable: true,
     onClick: () => handleSelect(course.id),
     onContextMenu: e => handleContextMenu(e, course, 'course'),
     onDragStart: e => handleDragStart(e, course, 'course'),
-    className: `relative flex items-center px-3 py-3 rounded-lg cursor-pointer transition-colors ${selectedId === course.id ? 'bg-blue-500/20' : draggedItem?.item?.id === course.id ? 'opacity-50' : 'bg-white/10 hover:bg-white/15'}`
+    className: `grid grid-cols-[44px_1fr_120px_220px] items-center border-t border-slate-100 px-4 py-3 text-sm transition-colors ${selectedId === course.id ? 'bg-blue-50' : 'hover:bg-slate-50'}`
   }, /*#__PURE__*/React.createElement("div", {
-    className: "w-10"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: `w-8 h-8 rounded-lg bg-gradient-to-br ${course.color} flex items-center justify-center`
-  }, course.icon)), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 text-white text-sm truncate"
+    className: `flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br ${course.color || 'from-blue-500 to-cyan-400'}`
+  }, course.icon), /*#__PURE__*/React.createElement("div", {
+    className: "truncate font-bold text-slate-900"
   }, course.title), /*#__PURE__*/React.createElement("div", {
-    className: "w-32 text-slate-400 text-sm"
+    className: "text-slate-500"
   }, "\u8BFE\u4EF6"), /*#__PURE__*/React.createElement("div", {
-    className: "w-48 text-slate-500 text-xs truncate"
-  }, course.file), selectedId === course.id && /*#__PURE__*/React.createElement("div", {
-    className: "absolute top-4 right-4 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center"
+    className: "truncate text-xs text-slate-400"
+  }, course.file)))), folderItems.length === 0 && courseItems.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-3xl border border-dashed border-slate-300 bg-slate-50 py-12 text-center"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-check text-white text-xs"
-  }))))), folderItems.length === 0 && courseItems.length === 0 && /*#__PURE__*/React.createElement("div", {
-    className: "text-center py-12 bg-white/10 rounded-3xl border border-white/10"
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-folder-open text-4xl text-slate-600 mb-3"
+    className: "fas fa-folder-open text-4xl text-slate-300 mb-3"
   }), /*#__PURE__*/React.createElement("p", {
-    className: "text-slate-500 text-sm"
+    className: "text-sm font-bold text-slate-600"
   }, "\u6B64\u6587\u4EF6\u5939\u4E3A\u7A7A"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowNewFolderDialog(true),
-    className: "mt-4 px-4 py-2 teacher-liquid-primary rounded-lg text-sm font-medium transition-colors"
+    className: "mt-4 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-folder-plus mr-1.5"
   }), "\u65B0\u5EFA\u6587\u4EF6\u5939"))), /*#__PURE__*/React.createElement("div", {
-    className: "px-5 py-2 border-t border-white/10 text-xs text-slate-400 flex items-center justify-between shrink-0"
-  }, /*#__PURE__*/React.createElement("span", null, folderItems.length, " \u4E2A\u6587\u4EF6\u5939, ", courseItems.length, " \u4E2A\u8BFE\u4EF6"), selectedId && /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-400"
-  }, "\u5DF2\u9009\u62E9: ", courseData.courses.find(c => c.id === selectedId)?.title)), /*#__PURE__*/React.createElement("div", {
-    className: "px-5 py-4 border-t border-white/10 flex justify-between items-center shrink-0"
+    className: "mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2 text-slate-100"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-400 text-sm"
-  }, "\u5171 ", courseData.courses.length, " \u4E2A\u8BFE\u4EF6")), /*#__PURE__*/React.createElement("button", {
+    className: "text-sm text-slate-500"
+  }, "\u5F53\u524D\u663E\u793A ", totalVisibleItems, " \u9879\uFF0C\u5171 ", courseData.courses.length, " \u4E2A\u8BFE\u4EF6", selectedCourse && /*#__PURE__*/React.createElement("span", {
+    className: "ml-3 font-bold text-slate-800"
+  }, "\u5DF2\u9009\u62E9\uFF1A", selectedCourse.title)), /*#__PURE__*/React.createElement("button", {
     onClick: handleStartCourse,
     disabled: !selectedId,
-    className: `flex items-center px-8 py-3 rounded-xl font-bold text-lg transition-all ${selectedId ? 'teacher-liquid-primary' : 'bg-white/10 text-slate-500 cursor-not-allowed'}`
+    className: `flex h-11 items-center gap-2 rounded-2xl px-6 text-sm font-black transition-colors ${selectedId ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-play mr-3"
-  }), "\u5F00\u59CB\u6388\u8BFE")))), showNewFolderDialog && /*#__PURE__*/React.createElement("div", {
+    className: "fas fa-play"
+  }), "\u5F00\u59CB\u6388\u8BFE"))), activeTab === 'settings' && /*#__PURE__*/React.createElement("section", {
+    className: "space-y-5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-bold text-blue-600"
+  }, "\u7CFB\u7EDF\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("h2", {
+    className: "mt-2 text-2xl font-black tracking-tight text-slate-950"
+  }, "\u8BFE\u5802\u5916\u914D\u7F6E"), /*#__PURE__*/React.createElement("p", {
+    className: "mt-2 text-sm text-slate-500"
+  }, "\u7BA1\u7406\u9ED8\u8BA4\u6388\u8BFE\u884C\u4E3A\u3001\u663E\u793A\u6BD4\u4F8B\u3001\u63D0\u4EA4\u76EE\u5F55\u4E0E\u8C03\u8BD5\u5DE5\u5177\u3002")), /*#__PURE__*/React.createElement("div", {
+    className: "grid gap-5 xl:grid-cols-[248px_1fr]"
+  }, /*#__PURE__*/React.createElement("aside", {
+    className: "h-fit rounded-[28px] border border-slate-200 bg-white p-3 shadow-sm"
+  }, [['classroom', '课堂行为', 'fa-chalkboard-user'], ['display', '显示与监控', 'fa-sliders'], ['security', '安全与提交', 'fa-shield-halved'], ['system', '系统工具', 'fa-screwdriver-wrench']].map(([key, label, icon]) => /*#__PURE__*/React.createElement("button", {
+    key: key,
+    onClick: () => setSettingsSection(key),
+    className: `flex h-12 w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-bold transition-colors ${settingsSection === key ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`
+  }, /*#__PURE__*/React.createElement("i", {
+    className: `fas ${icon} w-5 text-center`
+  }), /*#__PURE__*/React.createElement("span", null, label)))), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-5"
+  }, settingsSection === 'classroom' && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between gap-4"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+    className: "text-lg font-black text-slate-950"
+  }, "\u8BFE\u5802\u884C\u4E3A"), /*#__PURE__*/React.createElement("p", {
+    className: "mt-1 text-sm text-slate-500"
+  }, "\u8FD9\u4E9B\u9009\u9879\u4F1A\u4F5C\u4E3A\u6BCF\u6B21\u6388\u8BFE\u7684\u9ED8\u8BA4\u7B56\u7565\u3002")), /*#__PURE__*/React.createElement("div", {
+    className: "hidden rounded-2xl bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 sm:block"
+  }, settingToggles.filter(item => settings?.[item.key]).length, " \u9879\u5DF2\u5F00\u542F")), /*#__PURE__*/React.createElement("div", {
+    className: "mt-5 grid gap-3 lg:grid-cols-2"
+  }, settingToggles.map(item => /*#__PURE__*/React.createElement("div", {
+    key: item.key,
+    className: "rounded-2xl border border-slate-200 bg-slate-50 p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-start justify-between gap-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: `fas ${item.icon}`
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "font-black text-slate-900"
+  }, item.label), /*#__PURE__*/React.createElement("p", {
+    className: "mt-1 text-xs leading-relaxed text-slate-500"
+  }, item.desc)))), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onSettingsChange(item.key, !settings?.[item.key]),
+    className: `relative h-7 w-12 shrink-0 rounded-full transition-colors ${settings?.[item.key] ? 'bg-blue-600' : 'bg-slate-300'}`
+  }, /*#__PURE__*/React.createElement("span", {
+    className: `absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${settings?.[item.key] ? 'left-6' : 'left-1'}`
+  }))))))), settingsSection === 'display' && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-lg font-black text-slate-950"
+  }, "\u663E\u793A\u4E0E\u76D1\u63A7"), /*#__PURE__*/React.createElement("p", {
+    className: "mt-1 text-sm text-slate-500"
+  }, "\u8C03\u6574\u6559\u5E08\u7AEF\u753B\u5E03\u663E\u793A\u548C\u5B66\u751F\u622A\u56FE\u9891\u7387\u3002"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-5 grid gap-4 lg:grid-cols-3"
+  }, [['截图间隔', `${monitorIntervalValue}s`, 0.5, 5, 0.5, monitorIntervalValue, value => onSettingsChange('monitorIntervalSec', clampMonitorInterval(value)), 'monitorIntervalSec', 1], ['课件页面缩放', `${Math.round(uiScaleValue * 100)}%`, 0.8, 1.2, 0.01, uiScaleValue, value => onSettingsChange('uiScale', Number(value)), 'uiScale', 1], ['课件内容缩放', `${Math.round(renderScaleValue * 100)}%`, 0.6, 1.2, 0.01, renderScaleValue, value => onSettingsChange('renderScale', Number(value)), 'renderScale', 0.96]].map(([label, valueLabel, min, max, step, value, onChange, key, resetValue]) => /*#__PURE__*/React.createElement("div", {
+    key: key,
+    className: "rounded-2xl border border-slate-200 bg-slate-50 p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "font-black text-slate-900"
+  }, label), /*#__PURE__*/React.createElement("span", {
+    className: "rounded-xl bg-white px-2.5 py-1 text-sm font-black text-blue-700 shadow-sm"
+  }, valueLabel)), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: min,
+    max: max,
+    step: step,
+    value: value,
+    onChange: e => onChange(e.target.value),
+    className: "mt-5 w-full accent-blue-600"
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onSettingsChange(key, resetValue),
+    className: "mt-3 text-xs font-bold text-blue-600 hover:text-blue-700"
+  }, "\u6062\u590D\u9ED8\u8BA4"))))), settingsSection === 'security' && /*#__PURE__*/React.createElement("div", {
+    className: "grid gap-5 lg:grid-cols-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-lg font-black text-slate-950"
+  }, "\u5B66\u751F\u7AEF\u7BA1\u7406\u5458\u5BC6\u7801"), /*#__PURE__*/React.createElement("p", {
+    className: "mt-1 text-sm text-slate-500"
+  }, "\u63A8\u9001\u540E\u5728\u7EBF\u5B66\u751F\u7AEF\u4F1A\u7ACB\u5373\u751F\u6548\u3002"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: newPwd,
+    onChange: e => setNewPwd(e.target.value),
+    onKeyDown: e => e.key === 'Enter' && handleSetPassword(),
+    placeholder: "\u8F93\u5165\u65B0\u5BC6\u7801",
+    className: "mt-5 h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50"
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: handleSetPassword,
+    disabled: !newPwd.trim(),
+    className: `mt-3 h-11 w-full rounded-2xl text-sm font-black transition-colors ${newPwd.trim() ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-paper-plane mr-2"
+  }), "\u63A8\u9001\u5230\u6240\u6709\u5B66\u751F\u7AEF"), pwdStatus === 'ok' && /*#__PURE__*/React.createElement("p", {
+    className: "mt-3 text-xs font-bold text-emerald-600"
+  }, "\u5DF2\u63A8\u9001\uFF0C\u5728\u7EBF\u5B66\u751F\u5C06\u7ACB\u5373\u751F\u6548"), pwdStatus === 'err' && /*#__PURE__*/React.createElement("p", {
+    className: "mt-3 text-xs font-bold text-red-500"
+  }, "\u63A8\u9001\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5")), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-lg font-black text-slate-950"
+  }, "\u5B66\u751F\u63D0\u4EA4\u5185\u5BB9\u5B58\u50A8\u4F4D\u7F6E"), /*#__PURE__*/React.createElement("p", {
+    className: "mt-1 text-sm text-slate-500"
+  }, "\u8BBE\u7F6E\u4F5C\u4E1A\u4E0E\u63D0\u4EA4\u6587\u4EF6\u4FDD\u5B58\u76EE\u5F55\u3002"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-5 flex gap-2"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: submissionDir,
+    onChange: e => setSubmissionDir(e.target.value),
+    placeholder: "\u8F93\u5165\u5B58\u50A8\u76EE\u5F55\u8DEF\u5F84",
+    className: "min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50"
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: handleSelectSubmissionDir,
+    className: "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-blue-600 hover:bg-blue-50",
+    title: "\u9009\u62E9\u76EE\u5F55"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-folder-open"
+  }))), /*#__PURE__*/React.createElement("button", {
+    onClick: () => handleChangeSubmissionDir(),
+    disabled: !submissionDir.trim(),
+    className: `mt-3 h-11 w-full rounded-2xl text-sm font-black transition-colors ${submissionDir.trim() ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-save mr-2"
+  }), "\u66F4\u65B0\u5B58\u50A8\u4F4D\u7F6E"), submissionDirStatus === 'ok' && /*#__PURE__*/React.createElement("p", {
+    className: "mt-3 text-xs font-bold text-emerald-600"
+  }, "\u5DF2\u66F4\u65B0\u5B58\u50A8\u4F4D\u7F6E"), submissionDirStatus === 'err' && /*#__PURE__*/React.createElement("p", {
+    className: "mt-3 text-xs font-bold text-red-500"
+  }, "\u66F4\u65B0\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u8DEF\u5F84"))), settingsSection === 'system' && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-lg font-black text-slate-950"
+  }, "\u7CFB\u7EDF\u5DE5\u5177"), /*#__PURE__*/React.createElement("p", {
+    className: "mt-1 text-sm text-slate-500"
+  }, "\u7528\u4E8E\u6392\u67E5\u95EE\u9898\u4E0E\u67E5\u770B\u672C\u673A\u65E5\u5FD7\u3002"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-5 grid gap-3 sm:grid-cols-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: handleToggleDevTools,
+    className: "flex h-14 items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-black text-slate-700 hover:bg-white hover:text-blue-700"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-bug text-blue-600"
+  }), "\u6253\u5F00\u8C03\u8BD5\u9762\u677F"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleOpenLogDir,
+    className: "flex h-14 items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-black text-slate-700 hover:bg-white hover:text-blue-700"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-folder-open text-blue-600"
+  }), "\u6253\u5F00\u65E5\u5FD7\u76EE\u5F55")))))), !['home', 'courses', 'settings'].includes(activeTab) && /*#__PURE__*/React.createElement("section", {
+    className: "rounded-[28px] border border-slate-200 bg-white p-10 text-center shadow-sm"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-screwdriver-wrench text-xl"
+  })), /*#__PURE__*/React.createElement("h3", {
+    className: "mt-5 text-xl font-black text-slate-950"
+  }, "\u8BE5\u6A21\u5757\u5C06\u5728\u8FD9\u91CC\u6253\u5F00"), /*#__PURE__*/React.createElement("p", {
+    className: "mt-2 text-sm text-slate-500"
+  }, "\u5F53\u524D\u4E3B\u9875\u5DF2\u805A\u7126\u5E38\u7528\u8BFE\u5802\u5165\u53E3\uFF0C\u540E\u7EED\u6A21\u5757\u4F1A\u6CBF\u7528\u540C\u4E00\u5957\u7B80\u6D01\u5E03\u5C40\u3002")))), showNewFolderDialog && /*#__PURE__*/React.createElement("div", {
     className: `fixed inset-0 ${window.__getTeacherLayerClass?.('modal') || 'z-[10020]'} bg-black/50 flex items-center justify-center`
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-800 rounded-xl p-6 w-96 border border-slate-700 shadow-2xl"
@@ -3503,13 +4035,7 @@ function CourseSelector({
   }, "Cancel"), /*#__PURE__*/React.createElement("button", {
     onClick: handleRename,
     className: "px-4 py-2 teacher-liquid-primary rounded-lg text-sm font-medium transition-colors"
-  }, "Confirm")))), showSettings && /*#__PURE__*/React.createElement(SettingsPanel, {
-    settings: settings,
-    onSettingsChange: onSettingsChange,
-    socket: socket,
-    onClose: () => setShowSettings(false),
-    zIndex: window.__getTeacherLayerClass?.('drawer') || 'z-[10030]'
-  }), showGuide && /*#__PURE__*/React.createElement("div", {
+  }, "Confirm")))), showGuide && /*#__PURE__*/React.createElement("div", {
     className: `fixed inset-0 ${window.__getTeacherLayerClass?.('modal') || 'z-[10020]'} flex`,
     onClick: () => setShowGuide(false)
   }, /*#__PURE__*/React.createElement("div", {
@@ -4275,115 +4801,165 @@ const ensureTeacherShellStyles = () => {
   style.id = 'teacher-shell-liquid-style';
   style.textContent = `
         :root {
-            --teacher-bg: #07111f;
-            --teacher-glass: rgba(15, 23, 42, 0.68);
-            --teacher-glass-strong: rgba(15, 23, 42, 0.82);
-            --teacher-glass-soft: rgba(15, 23, 42, 0.54);
-            --teacher-border: rgba(255, 255, 255, 0.18);
-            --teacher-border-strong: rgba(255, 255, 255, 0.28);
-            --teacher-accent: #38bdf8;
+            --teacher-bg: #f6f8fc;
+            --teacher-surface: rgba(255, 255, 255, 0.94);
+            --teacher-surface-soft: rgba(248, 250, 252, 0.92);
+            --teacher-border: rgba(226, 232, 240, 0.92);
+            --teacher-border-strong: rgba(191, 219, 254, 0.95);
+            --teacher-accent: #2563eb;
         }
         .teacher-shell-page {
+            background: var(--teacher-bg);
+            color: #0f172a;
+        }
+        .teacher-classroom-shell {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
             background:
-                radial-gradient(circle at 12% 8%, rgba(56, 189, 248, 0.26), transparent 30%),
-                radial-gradient(circle at 88% 18%, rgba(16, 185, 129, 0.18), transparent 28%),
-                linear-gradient(145deg, #020617 0%, #07111f 50%, #0f172a 100%);
-            color: #f8fafc;
+                linear-gradient(180deg, rgba(239, 246, 255, 0.72) 0%, rgba(246, 248, 252, 0) 38%),
+                var(--teacher-bg);
         }
-        .teacher-glass {
-            background: linear-gradient(135deg, var(--teacher-glass), var(--teacher-glass-soft));
-            border: 1px solid var(--teacher-border);
-            box-shadow: 0 24px 80px rgba(2, 6, 23, 0.42), inset 0 1px 0 rgba(255,255,255,0.18);
-            backdrop-filter: blur(26px) saturate(155%);
-            -webkit-backdrop-filter: blur(26px) saturate(155%);
-            color: #f8fafc;
+        .teacher-classroom-header {
+            height: 58px;
+            flex: 0 0 58px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 0 18px 0 22px;
+            background: rgba(255, 255, 255, 0.88);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.92);
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+            backdrop-filter: blur(18px) saturate(150%);
+            -webkit-backdrop-filter: blur(18px) saturate(150%);
         }
-        .teacher-glass-dark {
-            background: linear-gradient(135deg, var(--teacher-glass-strong), var(--teacher-glass));
-            border: 1px solid var(--teacher-border);
-            box-shadow: 0 24px 90px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255,255,255,0.16);
-            backdrop-filter: blur(28px) saturate(160%);
-            -webkit-backdrop-filter: blur(28px) saturate(160%);
-            color: #f8fafc;
-        }
-        .teacher-glass-light {
-            background: linear-gradient(135deg, var(--teacher-glass), var(--teacher-glass-soft));
-            border: 1px solid var(--teacher-border);
-            box-shadow: 0 20px 70px rgba(2, 6, 23, 0.36), inset 0 1px 0 rgba(255,255,255,0.18);
-            backdrop-filter: blur(26px) saturate(155%);
-            -webkit-backdrop-filter: blur(26px) saturate(155%);
-            color: #f8fafc;
-        }
-        .teacher-floating-topbar {
-            position: absolute;
-            left: 16px;
-            right: 16px;
-            top: 14px;
-            z-index: 9990;
-            min-height: 58px;
-            border-radius: 24px;
-            padding: 10px 14px;
-        }
-        .teacher-floating-dock {
-            position: absolute;
-            left: 50%;
-            bottom: 14px;
-            z-index: 9990;
-            transform: translateX(-50%);
-            pointer-events: auto;
-            border-radius: 24px;
+        .teacher-classroom-main {
+            min-height: 0;
+            flex: 1;
+            position: relative;
+            display: block;
             padding: 10px;
         }
+        .teacher-stage-panel {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+        .teacher-stage-toolbar,
+        .teacher-side-panel {
+            background: rgba(255, 255, 255, 0.94);
+            border: 1px solid rgba(226, 232, 240, 0.92);
+            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+            backdrop-filter: blur(18px) saturate(150%);
+            -webkit-backdrop-filter: blur(18px) saturate(150%);
+        }
+        .teacher-stage-toolbar {
+            display: none !important;
+        }
+        .teacher-side-panel {
+            position: absolute;
+            right: 18px;
+            top: 18px;
+            z-index: 9991;
+            width: 238px;
+            max-height: calc(100% - 36px);
+            min-height: 0;
+            overflow-y: auto;
+            border-radius: 20px;
+            padding: 12px;
+            box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+        }
+        .teacher-glass {
+            background: var(--teacher-surface);
+            border: 1px solid var(--teacher-border);
+            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+            backdrop-filter: blur(18px) saturate(150%);
+            -webkit-backdrop-filter: blur(18px) saturate(150%);
+            color: #0f172a;
+        }
+        .teacher-glass-dark {
+            background: var(--teacher-surface);
+            border: 1px solid var(--teacher-border);
+            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+            backdrop-filter: blur(18px) saturate(150%);
+            -webkit-backdrop-filter: blur(18px) saturate(150%);
+            color: #0f172a;
+        }
+        .teacher-glass-light {
+            background: var(--teacher-surface);
+            border: 1px solid var(--teacher-border);
+            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+            backdrop-filter: blur(18px) saturate(150%);
+            -webkit-backdrop-filter: blur(18px) saturate(150%);
+            color: #0f172a;
+        }
         .teacher-liquid-button {
-            border: 1px solid rgba(255,255,255,0.18);
-            background: rgba(255,255,255,0.12);
-            color: #e2e8f0;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 10px 28px rgba(2,6,23,0.24);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--teacher-border);
+            background: #fff;
+            color: #475569;
+            box-shadow: none;
         }
         .teacher-liquid-button:hover {
-            background: rgba(255,255,255,0.2);
-            color: #fff;
+            background: #f8fafc;
+            color: #1d4ed8;
             transform: translateY(-1px);
         }
         .teacher-glass-light .teacher-liquid-button {
-            background: rgba(255,255,255,0.12);
-            color: #e2e8f0;
-            border-color: rgba(255,255,255,0.18);
+            background: #fff;
+            color: #475569;
+            border-color: var(--teacher-border);
         }
         .teacher-glass-light .teacher-liquid-button:hover {
-            background: rgba(255,255,255,0.2);
-            color: #fff;
+            background: #f8fafc;
+            color: #1d4ed8;
         }
         .teacher-liquid-primary {
-            background: linear-gradient(135deg, rgba(14,165,233,0.94), rgba(16,185,129,0.84));
+            background: #2563eb;
             color: #fff;
-            border-color: rgba(255,255,255,0.3);
-            box-shadow: 0 16px 44px rgba(14,165,233,0.28);
+            border: 1px solid #2563eb;
+            box-shadow: 0 12px 28px rgba(37,99,235,0.22);
         }
         .teacher-liquid-danger {
-            background: linear-gradient(135deg, rgba(239,68,68,0.9), rgba(244,63,94,0.78));
-            color: #fff;
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
         }
         .teacher-course-stage {
-            position: absolute;
-            inset: 0;
-            padding: 12px;
+            position: relative;
+            flex: 1;
+            min-height: 0;
+            padding: 0;
             z-index: 1;
+            border-radius: 24px;
+            border: 1px solid rgba(226, 232, 240, 0.92);
+            background: #fff;
+            box-shadow: 0 20px 58px rgba(15, 23, 42, 0.1);
+            overflow: hidden;
         }
         .teacher-course-stage > * {
+            height: 100%;
             border-radius: 24px;
             overflow: hidden;
-            box-shadow: 0 30px 100px rgba(0,0,0,0.35);
+            box-shadow: none;
+            background: transparent !important;
+        }
+        .teacher-course-stage > .flex {
+            background: transparent !important;
+        }
+        .teacher-course-stage [data-lumesync-stage-root="true"] {
+            box-shadow: none !important;
+            border: 1px solid rgba(226, 232, 240, 0.92);
+            border-radius: 20px !important;
         }
         .teacher-glass-drawer {
-            background: linear-gradient(145deg, var(--teacher-glass-strong), var(--teacher-glass));
-            border-left: 1px solid rgba(255,255,255,0.16);
-            box-shadow: -30px 0 90px rgba(0,0,0,0.42);
-            backdrop-filter: blur(28px) saturate(150%);
-            -webkit-backdrop-filter: blur(28px) saturate(150%);
-            color: #f8fafc;
+            background: #fff;
+            border-left: 1px solid var(--teacher-border);
+            box-shadow: -18px 0 48px rgba(15,23,42,0.14);
+            color: #0f172a;
         }
         .teacher-shell-page button,
         .teacher-glass button {
@@ -4397,11 +4973,6 @@ const ensureTeacherShellStyles = () => {
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
         .teacher-glass-enter { animation: teacherGlassIn 260ms ease-out both; }
-        @keyframes teacherDockIn {
-            from { opacity: 0; transform: translateX(-50%) translateY(14px) scale(0.98); }
-            to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-        }
-        .teacher-floating-dock.teacher-glass-enter { animation: teacherDockIn 260ms ease-out both; }
     `;
   document.head.appendChild(style);
 };
@@ -4556,7 +5127,7 @@ function ClassroomApp() {
     alertLeave: true,
     alertFullscreenExit: true,
     alertTabHidden: true,
-    monitorEnabled: false,
+    monitorEnabled: true,
     monitorIntervalSec: 1
   };
   const clampMonitorIntervalSec = value => {
@@ -4635,7 +5206,7 @@ function ClassroomApp() {
     if (!shell || !host) return null;
     const shellRect = shell.getBoundingClientRect();
     const hostRect = host.getBoundingClientRect();
-    const inset = 12; // .teacher-course-stage padding
+    const inset = 0; // .teacher-course-stage has no inner padding in the classroom workspace
     const width = Math.max(1, hostRect.width - inset * 2);
     const height = Math.max(1, hostRect.height - inset * 2);
     return {
@@ -5362,11 +5933,11 @@ function ClassroomApp() {
     }, /*#__PURE__*/React.createElement("div", {
       className: "teacher-glass-dark teacher-glass-enter rounded-[32px] px-12 py-10 text-center"
     }, /*#__PURE__*/React.createElement("i", {
-      className: "fas fa-network-wired fa-fade text-5xl text-sky-300 mb-6"
+      className: "fas fa-network-wired fa-fade text-5xl text-blue-600 mb-6"
     }), /*#__PURE__*/React.createElement("h2", {
       className: "text-2xl tracking-widest font-black"
     }, "\u6B63\u5728\u8FDE\u63A5\u8BFE\u5802\u670D\u52A1\u5668..."), /*#__PURE__*/React.createElement("p", {
-      className: "text-slate-400 mt-2"
+      className: "text-slate-500 mt-2"
     }, "\u6B63\u5728\u9A8C\u8BC1\u8EAB\u4EFD\u5E76\u5206\u914D\u6743\u9650...")));
   }
   if (isStandaloneClassroomWindow && isHost) {
@@ -5411,13 +5982,13 @@ function ClassroomApp() {
       className: "teacher-shell-page flex h-full items-center justify-center select-none px-8",
       onMouseDown: handleTitlebarMouseDown
     }, /*#__PURE__*/React.createElement("div", {
-      className: "teacher-glass-dark teacher-glass-enter flex w-full max-w-xl flex-col items-center rounded-[34px] px-10 py-12 text-white"
+      className: "teacher-glass-dark teacher-glass-enter flex w-full max-w-xl flex-col items-center rounded-[34px] px-10 py-12 text-slate-900"
     }, /*#__PURE__*/React.createElement("i", {
-      className: "fas fa-layer-group fa-bounce text-6xl text-sky-300 mb-8"
+      className: "fas fa-layer-group fa-bounce text-6xl text-blue-600 mb-8"
     }), /*#__PURE__*/React.createElement("h2", {
       className: "text-3xl tracking-widest font-bold mb-3"
     }, "\u6B63\u5728\u52A0\u8F7D\u8BFE\u4EF6\u5185\u5BB9..."), /*#__PURE__*/React.createElement("div", {
-      className: "w-80 h-2 bg-white/10 rounded-full overflow-hidden mb-4"
+      className: "w-80 h-2 bg-slate-200 rounded-full overflow-hidden mb-4"
     }, /*#__PURE__*/React.createElement("div", {
       className: "h-full bg-gradient-to-r from-sky-300 to-emerald-300 transition-all duration-300 ease-out",
       style: {
@@ -5434,7 +6005,7 @@ function ClassroomApp() {
     }), loadingProgress.currentFile)), /*#__PURE__*/React.createElement("div", {
       className: "mt-6 text-sm text-slate-500"
     }, "\u6B65\u9AA4 ", loadingProgress.currentStepIndex, " / ", loadingProgress.totalSteps), /*#__PURE__*/React.createElement("p", {
-      className: "text-slate-400 mt-4 text-sm flex items-center"
+      className: "text-slate-500 mt-4 text-sm flex items-center"
     }, /*#__PURE__*/React.createElement("i", {
       className: "fas fa-bolt text-yellow-400 mr-2"
     }), " \u8BF7\u7A0D\u5019\uFF0C\u6B63\u5728\u51C6\u5907\u8BFE\u5802\u73AF\u5883")));
@@ -5448,7 +6019,7 @@ function ClassroomApp() {
       });
     };
     return /*#__PURE__*/React.createElement("div", {
-      className: "teacher-shell-page flex h-full flex-col items-center justify-center text-white select-none p-8",
+      className: "teacher-shell-page flex h-full flex-col items-center justify-center text-slate-900 select-none p-8",
       onMouseDown: handleTitlebarMouseDown
     }, /*#__PURE__*/React.createElement("div", {
       className: "teacher-glass-dark teacher-glass-enter w-full max-w-3xl rounded-[34px] p-8 text-center"
@@ -5468,32 +6039,32 @@ function ClassroomApp() {
       className: "fas fa-bug mr-2"
     }), " \u9519\u8BEF\u8BE6\u60C5"), /*#__PURE__*/React.createElement("button", {
       onClick: handleCopy,
-      className: `teacher-liquid-button flex items-center px-3 py-1 rounded-xl text-xs font-bold ${copyDone ? 'text-emerald-200' : 'text-red-200'}`
+      className: `teacher-liquid-button flex items-center px-3 py-1 rounded-xl text-xs font-bold ${copyDone ? 'text-emerald-600' : 'text-red-600'}`
     }, /*#__PURE__*/React.createElement("i", {
       className: `fas ${copyDone ? 'fa-check' : 'fa-copy'} mr-1.5`
     }), copyDone ? '已复制' : '复制')), /*#__PURE__*/React.createElement("pre", {
-      className: "text-red-200 text-sm font-mono whitespace-pre-wrap break-all leading-relaxed"
+      className: "text-red-600 text-sm font-mono whitespace-pre-wrap break-all leading-relaxed"
     }, errorText)), /*#__PURE__*/React.createElement("button", {
       onClick: handleEndCourse,
       className: "teacher-liquid-button mt-6 px-6 py-3 rounded-2xl font-bold"
     }, /*#__PURE__*/React.createElement("i", {
       className: "fas fa-arrow-left mr-2"
     }), " \u8FD4\u56DE\u8BFE\u4EF6\u9009\u62E9")) : /*#__PURE__*/React.createElement("p", {
-      className: "text-slate-400 mt-2"
+      className: "text-slate-500 mt-2"
     }, "\u8BF7\u7B49\u5F85\u8001\u5E08\u91CD\u65B0\u52A0\u8F7D\u8BFE\u4EF6")));
   }
   if (!currentCourseData) {
     return /*#__PURE__*/React.createElement("div", {
-      className: "teacher-shell-page flex h-full items-center justify-center text-white select-none px-8",
+      className: "teacher-shell-page flex h-full items-center justify-center text-slate-900 select-none px-8",
       onMouseDown: handleTitlebarMouseDown
     }, /*#__PURE__*/React.createElement("div", {
       className: "teacher-glass-dark teacher-glass-enter rounded-[34px] px-12 py-10 text-center"
     }, /*#__PURE__*/React.createElement("i", {
-      className: "fas fa-layer-group fa-bounce text-6xl text-sky-300 mb-8"
+      className: "fas fa-layer-group fa-bounce text-6xl text-blue-600 mb-8"
     }), /*#__PURE__*/React.createElement("h2", {
       className: "text-3xl tracking-widest font-bold mb-3"
     }, "\u6B63\u5728\u52A0\u8F7D\u8BFE\u4EF6\u5185\u5BB9..."), /*#__PURE__*/React.createElement("p", {
-      className: "text-slate-400 mt-4 text-sm flex items-center"
+      className: "text-slate-500 mt-4 text-sm flex items-center"
     }, /*#__PURE__*/React.createElement("i", {
       className: "fas fa-bolt text-yellow-400 mr-2"
     }), " \u8BF7\u7A0D\u5019\uFF0C\u6B63\u5728\u51C6\u5907\u8BFE\u5802\u73AF\u5883")));
@@ -5503,61 +6074,148 @@ function ClassroomApp() {
     onEndCourse: isHost ? handleEndCourse : null
   }, /*#__PURE__*/React.createElement("div", {
     ref: shellPageRef,
-    className: "teacher-shell-page h-full overflow-hidden font-sans select-none relative"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "teacher-floating-topbar teacher-glass-dark teacher-glass-enter flex items-center justify-between",
+    className: "teacher-shell-page teacher-classroom-shell font-sans select-none relative"
+  }, /*#__PURE__*/React.createElement("header", {
+    className: "teacher-classroom-header",
     style: {
       WebkitAppRegion: 'drag'
     },
     onMouseDown: handleTitlebarMouseDown,
     onDoubleClick: handleTitlebarDoubleClick
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-3 flex-1 min-w-0"
+    className: "flex min-w-0 items-center gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-microchip text-sky-200 text-2xl md:text-3xl"
-  }), /*#__PURE__*/React.createElement("h1", {
-    className: "flex-1 min-w-0 text-lg md:text-2xl font-bold text-white tracking-wide truncate"
-  }, currentCourseData.title), /*#__PURE__*/React.createElement("button", {
-    onClick: () => window.__LumeSyncOpenClassroomWindow?.(),
-    className: "px-3 py-1 text-xs md:text-sm font-bold rounded-full border bg-sky-300/15 text-sky-100 border-sky-200/30 flex items-center shadow-inner hover:bg-sky-300/25 transition-colors",
-    title: "\u70B9\u51FB\u67E5\u770B\u673A\u623F\u89C6\u56FE",
-    style: {
-      WebkitAppRegion: 'no-drag'
-    },
-    "data-window-control": "true"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "relative flex h-2 w-2 mr-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "relative inline-flex rounded-full h-2 w-2 bg-purple-500"
-  })), "\u5728\u7EBF\u5B66\u751F: ", studentCount)), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-3 md:space-x-4",
+    className: "fas fa-chalkboard-user text-xl"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("h1", {
+    className: "truncate text-xl font-black tracking-tight text-slate-950"
+  }, currentCourseData.title), /*#__PURE__*/React.createElement("span", {
+    className: "shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700"
+  }, "\u6388\u8BFE\u4E2D")), /*#__PURE__*/React.createElement("p", {
+    className: "mt-0.5 text-sm font-medium text-slate-500"
+  }, "\u7B2C ", currentSlide + 1, " \u9875 / \u5171 ", currentCourseData.slides.length, " \u9875"))), /*#__PURE__*/React.createElement("div", {
+    className: "flex shrink-0 items-center gap-1.5",
     style: {
       WebkitAppRegion: 'no-drag'
     },
     "data-window-control": "true"
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: handleEndCourse,
-    className: "teacher-liquid-danger flex items-center px-3 py-2 rounded-2xl text-sm font-bold",
-    title: "\u7ED3\u675F\u8BFE\u4EF6"
+    onClick: () => window.__LumeSyncOpenClassroomWindow?.(),
+    className: "flex h-9 items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-3 text-sm font-bold text-blue-700 hover:bg-blue-100",
+    title: "\u67E5\u770B\u673A\u623F\u89C6\u56FE"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "h-2 w-2 rounded-full bg-emerald-500"
+  }), studentCount), /*#__PURE__*/React.createElement("button", {
+    onClick: () => goToSlide(currentSlide - 1),
+    disabled: currentSlide === 0,
+    className: `flex h-9 w-9 items-center justify-center rounded-2xl text-sm font-bold transition-all ${currentSlide === 0 ? 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400' : 'teacher-liquid-button'}`,
+    title: "\u4E0A\u4E00\u9875"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-stop"
-  })), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowSettings(v => !v),
-    className: "teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-sm font-bold",
-    title: "\u8BFE\u5802\u8BBE\u7F6E"
+    className: "fas fa-chevron-left"
+  })), /*#__PURE__*/React.createElement("span", {
+    className: "flex h-9 items-center rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-black text-slate-800"
+  }, currentSlide + 1, " / ", currentCourseData.slides.length), /*#__PURE__*/React.createElement("button", {
+    onClick: () => goToSlide(currentSlide + 1),
+    disabled: currentSlide === currentCourseData.slides.length - 1,
+    className: `flex h-9 w-9 items-center justify-center rounded-2xl text-sm font-bold transition-all ${currentSlide === currentCourseData.slides.length - 1 ? 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400' : 'teacher-liquid-primary'}`,
+    title: "\u4E0B\u4E00\u9875"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-gear"
+    className: "fas fa-chevron-right"
   })), /*#__PURE__*/React.createElement("button", {
+    onClick: toggleInteractionSync,
+    className: `flex h-9 w-9 items-center justify-center rounded-2xl border text-sm font-bold transition-all ${settings && settings.syncInteraction === true ? 'border-blue-200 bg-blue-50 text-blue-700' : 'teacher-liquid-button'}`,
+    title: settings && settings.syncInteraction === true ? '同步互动中' : '开启互动同步'
+  }, /*#__PURE__*/React.createElement("i", {
+    className: `fas ${settings && settings.syncInteraction === true ? 'fa-sync' : 'fa-rotate'}`
+  })), isHost && [{
+    icon: 'fa-pen',
+    title: '批注',
+    active: annotateEnabled,
+    onClick: () => setAnnotateEnabled(v => !v)
+  }, {
+    icon: 'fa-grip-lines',
+    title: '粗细',
+    active: annoPopupType === 'width',
+    onClick: () => {
+      setAnnotateEnabled(true);
+      setAnnoPopupType(v => v === 'width' ? null : 'width');
+    }
+  }, {
+    icon: 'fa-palette',
+    title: '颜色',
+    active: annoPopupType === 'color',
+    onClick: () => {
+      setAnnotateEnabled(true);
+      setAnnoPopupType(v => v === 'color' ? null : 'color');
+    }
+  }, {
+    icon: 'fa-trash-can',
+    title: '清空批注',
+    active: false,
+    onClick: handleClearAnno
+  }].map(btn => /*#__PURE__*/React.createElement("button", {
+    key: btn.icon,
+    title: btn.title,
+    onClick: btn.onClick,
+    className: `flex h-9 w-9 items-center justify-center rounded-2xl text-sm transition-colors ${btn.active ? 'border border-blue-600 bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`
+  }, /*#__PURE__*/React.createElement("i", {
+    className: `fas ${btn.icon}`
+  }))), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowLog(v => !v),
-    className: "teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-sm font-bold relative",
+    className: "teacher-liquid-button relative flex h-9 w-9 items-center justify-center rounded-2xl text-sm",
     title: "\u5B66\u751F\u65E5\u5FD7"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-list-ul"
   }), sharedStudentLog.length > 0 && /*#__PURE__*/React.createElement("span", {
-    className: "absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold"
-  }, sharedStudentLog.length > 99 ? '99' : sharedStudentLog.length)), /*#__PURE__*/React.createElement(WindowControls, null))), /*#__PURE__*/React.createElement("div", {
+    className: "absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-bold text-white"
+  }, sharedStudentLog.length > 99 ? '99' : sharedStudentLog.length)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowSettings(v => !v),
+    className: "teacher-liquid-button flex h-9 w-9 items-center justify-center rounded-2xl text-sm",
+    title: "\u8BFE\u5802\u8BBE\u7F6E"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-gear"
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: handleEndCourse,
+    className: "teacher-liquid-danger flex h-9 w-9 items-center justify-center rounded-2xl text-sm",
+    title: "\u7ED3\u675F\u6388\u8BFE"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-stop"
+  })), /*#__PURE__*/React.createElement(WindowControls, null))), /*#__PURE__*/React.createElement("main", {
+    className: "teacher-classroom-main",
+    style: {
+      WebkitAppRegion: 'no-drag'
+    }
+  }, /*#__PURE__*/React.createElement("section", {
+    className: "teacher-stage-panel"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "teacher-stage-toolbar flex items-center justify-between gap-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex min-w-0 items-center gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600"
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-layer-group"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "truncate text-sm font-black text-slate-900"
+  }, "\u8BFE\u4EF6\u753B\u5E03"), /*#__PURE__*/React.createElement("p", {
+    className: "truncate text-xs font-medium text-slate-500"
+  }, "\u6D45\u8272\u5DE5\u4F5C\u533A\uFF0C\u805A\u7126\u6388\u8BFE\u5185\u5BB9"))), /*#__PURE__*/React.createElement("div", {
+    className: "hidden min-w-0 flex-1 items-center justify-end gap-1 md:flex"
+  }, currentCourseData.slides.slice(0, 18).map((_, idx) => /*#__PURE__*/React.createElement("button", {
+    key: idx,
+    onClick: () => goToSlide(idx),
+    className: `h-2 rounded-full transition-all ${idx === currentSlide ? 'w-8 bg-blue-600' : 'w-2 bg-slate-200 hover:bg-slate-300'}`,
+    title: `\u7b2c ${idx + 1} \u9875`
+  })), currentCourseData.slides.length > 18 && /*#__PURE__*/React.createElement("span", {
+    className: "ml-1 text-xs font-bold text-slate-400"
+  }, "+", currentCourseData.slides.length - 18))), /*#__PURE__*/React.createElement("div", {
     ref: teacherStageHostRef,
     className: "teacher-course-stage"
   }, /*#__PURE__*/React.createElement(window.LumeSyncRenderEngine.CourseStage, {
@@ -5578,7 +6236,52 @@ function ClassroomApp() {
     renderTeacherOverlays: false,
     hideTopBar: true,
     hideBottomBar: true
-  })), isHost && /*#__PURE__*/React.createElement("canvas", {
+  })))), isHost && annoPopupType === 'width' && /*#__PURE__*/React.createElement("div", {
+    className: "absolute right-56 top-16 z-[9992] w-56 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur-xl",
+    "data-window-control": "true"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mb-2 flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-bold text-slate-700"
+  }, "\u753B\u7B14\u7C97\u7EC6"), /*#__PURE__*/React.createElement("span", {
+    className: "rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-500"
+  }, annoWidth, "px")), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "2",
+    max: "20",
+    value: annoWidth,
+    onChange: e => setAnnoWidth(Number(e.target.value)),
+    className: "w-full"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 grid grid-cols-2 gap-2"
+  }, ['pen', 'marker', 'highlighter', 'eraser'].map(t => /*#__PURE__*/React.createElement("button", {
+    key: t,
+    onClick: () => setAnnoTool(t),
+    className: `rounded-xl border px-2 py-2 text-xs font-bold transition-colors ${annoTool === t ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'}`
+  }, t === 'pen' ? '\u94a2\u7b14' : t === 'marker' ? '\u8bb0\u53f7\u7b14' : t === 'highlighter' ? '\u8367\u5149\u7b14' : '\u6a61\u76ae')))), isHost && annoPopupType === 'color' && /*#__PURE__*/React.createElement("div", {
+    className: "absolute right-44 top-16 z-[9992] w-56 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur-xl",
+    "data-window-control": "true"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mb-2 flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-bold text-slate-700"
+  }, "\u753B\u7B14\u989C\u8272"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: annoColor,
+    disabled: annoTool === 'eraser',
+    onChange: e => setAnnoColor(e.target.value),
+    className: `h-8 w-10 border-0 bg-transparent p-0 ${annoTool === 'eraser' ? 'cursor-not-allowed opacity-40' : ''}`
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-8 gap-2"
+  }, ['#ef4444', '#f97316', '#facc15', '#22c55e', '#3b82f6', '#a855f7', '#0f172a', '#ffffff'].map(c => /*#__PURE__*/React.createElement("button", {
+    key: c,
+    onClick: () => setAnnoColor(c),
+    disabled: annoTool === 'eraser',
+    className: `h-7 rounded-full border transition-all ${annoTool === 'eraser' ? 'cursor-not-allowed border-slate-200 opacity-40' : annoColor.toLowerCase() === c.toLowerCase() ? 'border-blue-600 ring-2 ring-blue-300' : 'border-slate-200 hover:border-slate-300'}`,
+    style: {
+      background: c
+    }
+  })))), isHost && /*#__PURE__*/React.createElement("canvas", {
     ref: annoCanvasRef,
     className: "absolute z-[9980]",
     style: {
@@ -5587,7 +6290,7 @@ function ClassroomApp() {
       pointerEvents: annotateEnabled ? 'auto' : 'none',
       touchAction: 'none',
       cursor: annotateEnabled ? annoTool === 'eraser' ? 'cell' : 'crosshair' : 'default',
-      borderRadius: '24px'
+      borderRadius: '20px'
     },
     onPointerDown: handleAnnoPointerDown,
     onPointerMove: handleAnnoPointerMove,
@@ -5598,135 +6301,23 @@ function ClassroomApp() {
     onMouseMove: handleAnnoMouseMove,
     onMouseUp: handleAnnoMouseUp,
     onMouseLeave: handleAnnoMouseUp
-  }), isHost && /*#__PURE__*/React.createElement("div", {
-    className: "absolute left-6 top-1/2 -translate-y-1/2 z-[9991] flex flex-col gap-2"
-  }, [{
-    icon: 'fa-pen',
-    title: '开启/关闭批注',
-    active: annotateEnabled,
-    onClick: () => setAnnotateEnabled(v => !v)
-  }, {
-    icon: 'fa-grip-lines',
-    title: '画笔粗细',
-    active: annoPopupType === 'width',
-    onClick: () => {
-      setAnnotateEnabled(true);
-      setAnnoPopupType(v => v === 'width' ? null : 'width');
-    }
-  }, {
-    icon: 'fa-palette',
-    title: '画笔颜色',
-    active: annoPopupType === 'color',
-    onClick: () => {
-      setAnnotateEnabled(true);
-      setAnnoPopupType(v => v === 'color' ? null : 'color');
-    }
-  }, {
-    icon: 'fa-trash-can',
-    title: '清空本页',
-    active: false,
-    onClick: handleClearAnno
-  }, {
-    icon: 'fa-xmark',
-    title: '退出批注',
-    active: false,
-    danger: true,
-    onClick: () => {
-      stopAnnoDrawing();
-      setAnnotateEnabled(false);
-      setAnnoPopupType(null);
-    }
-  }].map(btn => /*#__PURE__*/React.createElement("button", {
-    key: btn.icon,
-    title: btn.title,
-    onClick: btn.onClick,
-    className: `w-9 h-9 rounded-xl text-sm flex items-center justify-center transition-colors ${btn.danger ? 'bg-red-700/80 hover:bg-red-600 text-white' : btn.active ? 'bg-blue-500 text-white' : 'bg-slate-700 hover:bg-slate-600 text-white'}`
-  }, /*#__PURE__*/React.createElement("i", {
-    className: `fas ${btn.icon}`
-  }))), annoPopupType === 'width' && /*#__PURE__*/React.createElement("div", {
-    className: "absolute left-12 top-8 w-52 bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl p-3 shadow-xl z-10"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between mb-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-600 font-bold text-sm"
-  }, "\u7C97\u7EC6"), /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-500 font-mono text-xs bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg"
-  }, annoWidth, "px")), /*#__PURE__*/React.createElement("input", {
-    type: "range",
-    min: "2",
-    max: "20",
-    value: annoWidth,
-    onChange: e => setAnnoWidth(Number(e.target.value)),
-    className: "w-full"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "mt-2 flex gap-2 flex-wrap"
-  }, ['pen', 'marker', 'highlighter', 'eraser'].map(t => /*#__PURE__*/React.createElement("button", {
-    key: t,
-    onClick: () => setAnnoTool(t),
-    className: `px-2 py-1 rounded-lg text-xs font-bold border transition-colors ${annoTool === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`
-  }, t === 'pen' ? '钢笔' : t === 'marker' ? '记号笔' : t === 'highlighter' ? '荧光笔' : '橡皮')))), annoPopupType === 'color' && /*#__PURE__*/React.createElement("div", {
-    className: "absolute left-12 top-16 w-52 bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl p-3 shadow-xl z-10"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between mb-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-600 font-bold text-sm"
-  }, "\u989C\u8272"), /*#__PURE__*/React.createElement("input", {
-    type: "color",
-    value: annoColor,
-    disabled: annoTool === 'eraser',
-    onChange: e => setAnnoColor(e.target.value),
-    className: `w-10 h-7 p-0 border-0 bg-transparent ${annoTool === 'eraser' ? 'opacity-40 cursor-not-allowed' : ''}`
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-wrap gap-2"
-  }, ['#ef4444', '#f97316', '#facc15', '#22c55e', '#3b82f6', '#a855f7', '#0f172a', '#ffffff'].map(c => /*#__PURE__*/React.createElement("button", {
-    key: c,
-    onClick: () => setAnnoColor(c),
-    disabled: annoTool === 'eraser',
-    className: `w-7 h-7 rounded-full border transition-all ${annoTool === 'eraser' ? 'opacity-40 cursor-not-allowed border-slate-200' : annoColor.toLowerCase() === c.toLowerCase() ? 'border-blue-600 ring-2 ring-blue-300' : 'border-slate-200 hover:border-slate-300'}`,
-    style: {
-      background: c
-    }
-  }))))), annotateEnabled && isHost && /*#__PURE__*/React.createElement("div", {
-    className: "absolute top-16 left-1/2 -translate-x-1/2 z-[9992] px-3 py-1.5 rounded-xl bg-blue-600/90 text-white text-xs font-bold border border-blue-300 shadow-lg backdrop-blur-sm pointer-events-none"
-  }, "\u6807\u6CE8\u6A21\u5F0F\uFF1A\u62D6\u52A8\u7ED8\u5236"), /*#__PURE__*/React.createElement("div", {
-    className: "teacher-floating-dock teacher-glass-light teacher-glass-enter flex items-center gap-4"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => goToSlide(currentSlide - 1),
-    disabled: currentSlide === 0,
-    className: `flex items-center px-4 md:px-6 py-2 md:py-2.5 rounded-2xl font-bold text-base md:text-lg transition-all ${currentSlide === 0 ? 'text-slate-400 bg-white/30 cursor-not-allowed' : 'teacher-liquid-primary hover:-translate-x-1'}`
-  }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-chevron-left mr-2"
-  }), "\u4E0A\u4E00\u9875"), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-3 relative"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-100 font-black text-base md:text-lg tracking-widest bg-white/12 px-4 md:px-6 py-1 md:py-2 rounded-full shadow-inner border border-white/20"
-  }, currentSlide + 1, " / ", currentCourseData.slides.length), /*#__PURE__*/React.createElement("button", {
-    onClick: toggleInteractionSync,
-    className: `flex items-center px-4 md:px-5 py-2 md:py-2.5 rounded-2xl font-bold text-base md:text-lg transition-all border ${settings && settings.syncInteraction === true ? 'bg-amber-400/90 text-white border-white/40 shadow-lg' : 'teacher-liquid-button text-slate-100'}`,
-    title: settings && settings.syncInteraction === true ? '已开启交互同步（点击关闭）' : '开启教师交互同步（学生端同步所有操作）'
-  }, /*#__PURE__*/React.createElement("i", {
-    className: `fas ${settings && settings.syncInteraction === true ? 'fa-sync' : 'fa-rotate'} mr-2`
-  }), settings && settings.syncInteraction === true ? '同步交互' : '开启同步')), /*#__PURE__*/React.createElement("button", {
-    onClick: () => goToSlide(currentSlide + 1),
-    disabled: currentSlide === currentCourseData.slides.length - 1,
-    className: `flex items-center px-4 md:px-6 py-2 md:py-2.5 rounded-2xl font-bold text-base md:text-lg transition-all ${currentSlide === currentCourseData.slides.length - 1 ? 'text-slate-400 bg-white/30 cursor-not-allowed' : 'teacher-liquid-primary hover:translate-x-1'}`
-  }, "\u4E0B\u4E00\u9875", /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-chevron-right ml-2"
-  }))), showLog && /*#__PURE__*/React.createElement("div", {
-    className: `fixed inset-0 ${getTeacherLayerClass('drawer')} flex justify-end bg-black/20 backdrop-blur-sm`,
+  }), annotateEnabled && isHost && /*#__PURE__*/React.createElement("div", {
+    className: "absolute left-1/2 top-24 z-[9992] -translate-x-1/2 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 shadow-sm pointer-events-none"
+  }, "\u6807\u6CE8\u6A21\u5F0F\uFF1A\u62D6\u52A8\u753B\u5E03\u5373\u53EF\u7ED8\u5236"), showLog && /*#__PURE__*/React.createElement("div", {
+    className: `fixed inset-0 ${getTeacherLayerClass('drawer')} flex justify-end bg-slate-950/20 backdrop-blur-sm`,
     onClick: () => setShowLog(false)
   }, /*#__PURE__*/React.createElement("div", {
     className: "teacher-glass-drawer w-96 h-full flex flex-col",
     onClick: e => e.stopPropagation()
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0"
+    className: "flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0"
   }, /*#__PURE__*/React.createElement("h3", {
-    className: "font-bold text-white text-lg flex items-center"
+    className: "flex items-center text-lg font-black text-slate-950"
   }, /*#__PURE__*/React.createElement("i", {
-    className: "fas fa-list-ul mr-2 text-sky-300"
+    className: "fas fa-list-ul mr-2 text-blue-600"
   }), " \u5B66\u751F\u64CD\u4F5C\u65E5\u5FD7"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowLog(false),
-    className: "text-slate-300 hover:text-white"
+    className: "text-slate-400 hover:text-slate-900"
   }, /*#__PURE__*/React.createElement("i", {
     className: "fas fa-xmark text-xl"
   }))), /*#__PURE__*/React.createElement("div", {

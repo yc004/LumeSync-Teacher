@@ -24,6 +24,39 @@ let currentCourseId = null;
 let currentSlideIndex = 0;
 let courseCatalog = scanCourses();
 
+function getDirectorySize(rootDir) {
+    const root = path.resolve(rootDir);
+    let totalBytes = 0;
+    let fileCount = 0;
+    const stack = [root];
+
+    while (stack.length > 0) {
+        const current = stack.pop();
+        let entries = [];
+        try {
+            entries = fs.readdirSync(current, { withFileTypes: true });
+        } catch (_) {
+            continue;
+        }
+
+        for (const entry of entries) {
+            const fullPath = path.join(current, entry.name);
+            try {
+                if (entry.isSymbolicLink()) continue;
+                if (entry.isDirectory()) {
+                    stack.push(fullPath);
+                } else if (entry.isFile()) {
+                    const stat = fs.statSync(fullPath);
+                    totalBytes += stat.size;
+                    fileCount += 1;
+                }
+            } catch (_) {}
+        }
+    }
+
+    return { totalBytes, fileCount, root };
+}
+
 function resolveCourseExportTarget(course, format) {
     const normalizedFormat = String(format || '').trim().toLowerCase();
     if (normalizedFormat !== 'pdf' && normalizedFormat !== 'lume') {
@@ -58,6 +91,21 @@ function resolveCourseExportTarget(course, format) {
 // 健康检查
 router.get('/health', (req, res) => {
     res.json({ ok: true, app: 'LumeSync', port: Number(process.env.PORT || 3000), pid: process.pid });
+});
+
+router.get('/storage-usage', (_req, res) => {
+    try {
+        const appRoot = path.resolve(__dirname, '../..');
+        const usage = getDirectorySize(appRoot);
+        res.json({
+            success: true,
+            bytes: usage.totalBytes,
+            fileCount: usage.fileCount,
+            root: usage.root
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 // 获取课程列表

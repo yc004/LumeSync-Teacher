@@ -14,6 +14,7 @@ target_link_libraries(LumeSyncTeacherShell
     iphlpapi
     winhttp
     comdlg32
+    dwmapi
 )
 
 if(WEBVIEW2_INCLUDE_DIR)

@@ -137,9 +137,15 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
     const [selectedId, setSelectedId] = useState(currentCourseId);
     const [showGuide, setShowGuide] = useState(false);
     const [guideContent, setGuideContent] = useState('');
-    const [showSettings, setShowSettings] = useState(false);
     const [showSubmissionsBrowser, setShowSubmissionsBrowser] = useState(false);
     const [courseData, setCourseData] = useState({ courses: [], folders: [] });
+    const [activeTab, setActiveTab] = useState('home');
+    const [storageUsage, setStorageUsage] = useState(null);
+    const [settingsSection, setSettingsSection] = useState('classroom');
+    const [newPwd, setNewPwd] = useState('');
+    const [pwdStatus, setPwdStatus] = useState(null);
+    const [submissionDir, setSubmissionDir] = useState('');
+    const [submissionDirStatus, setSubmissionDirStatus] = useState(null);
     const [viewMode, setViewMode] = useState('grid');
     const [currentFolder, setCurrentFolder] = useState(null);
     const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
@@ -739,327 +745,675 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
         return () => document.removeEventListener('click', handleClickOutside);
     }, []);
 
+    useEffect(() => {
+        let disposed = false;
+        fetch('/api/storage-usage')
+            .then(res => res.json())
+            .then(data => {
+                if (!disposed && data?.success) setStorageUsage(data);
+            })
+            .catch(() => {});
+        return () => { disposed = true; };
+    }, []);
+
+    useEffect(() => {
+        let disposed = false;
+        fetch('/api/submission-config')
+            .then(res => res.json())
+            .then(data => {
+                if (!disposed && data?.submissionsDir) setSubmissionDir(data.submissionsDir);
+            })
+            .catch(() => {});
+        return () => { disposed = true; };
+    }, []);
+
+    const selectedCourse = courseData.courses.find(c => c.id === selectedId);
+    const totalFolders = courseData.folders.length;
+    const totalVisibleItems = folderItems.length + courseItems.length;
+    const rootCourseCount = courseData.courses.filter(c => !c.folderId || c.folderId === null || c.folderId === undefined).length;
+    const formatBytes = (bytes) => {
+        const value = Number(bytes);
+        if (!Number.isFinite(value) || value < 0) return '计算中';
+        if (value >= 1024 ** 3) return `${(value / (1024 ** 3)).toFixed(1)} GB`;
+        if (value >= 1024 ** 2) return `${(value / (1024 ** 2)).toFixed(1)} MB`;
+        if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+        return `${Math.round(value)} B`;
+    };
+    const storageLabel = storageUsage ? formatBytes(storageUsage.bytes) : '计算中';
+    const storagePercent = storageUsage ? Math.min(100, Math.max(4, Math.round((Number(storageUsage.bytes) || 0) / (1024 ** 3) * 10))) : 18;
+    const pendingItems = [
+        { icon: 'fa-calendar-check', color: 'text-emerald-600', bg: 'bg-emerald-50', title: '今日授课准备', detail: selectedCourse ? `已选择「${selectedCourse.title}」` : '到课件库选择课件后即可开始授课', action: selectedCourse ? '已就绪' : '去选择', onClick: () => setActiveTab('courses') },
+        { icon: 'fa-user-group', color: 'text-blue-600', bg: 'bg-blue-50', title: '在线学生', detail: `${studentCount || 0} 名学生已连接`, action: '机房', onClick: () => window.__LumeSyncOpenClassroomWindow?.() },
+        { icon: 'fa-folder-tree', color: 'text-amber-600', bg: 'bg-amber-50', title: '课件整理', detail: `${totalFolders} 个文件夹，${rootCourseCount} 个根目录课件`, action: '课件库', onClick: () => setActiveTab('courses') },
+        { icon: 'fa-clock-rotate-left', color: 'text-violet-600', bg: 'bg-violet-50', title: '课堂日志', detail: `${studentLog?.length || 0} 条学生动态`, action: '记录' },
+    ];
+    const summaryStats = [
+        { label: '课件总数', value: courseData.courses.length, suffix: '个', icon: 'fa-layer-group', tone: 'blue', onClick: () => setActiveTab('courses') },
+        { label: '文件夹', value: totalFolders, suffix: '个', icon: 'fa-folder', tone: 'amber' },
+        { label: '在线学生', value: studentCount || 0, suffix: '人', icon: 'fa-users', tone: 'emerald', onClick: () => window.__LumeSyncOpenClassroomWindow?.() },
+        { label: '课堂记录', value: studentLog?.length || 0, suffix: '条', icon: 'fa-clipboard-list', tone: 'violet' },
+    ];
+    const quickActions = [
+        { label: '开始授课', icon: 'fa-play', onClick: handleStartCourse, primary: true, disabled: !selectedId },
+        { label: '导入课件', icon: 'fa-file-import', onClick: handleImportCourse, hidden: !window.electronAPI?.importCourse },
+        { label: '新建文件夹', icon: 'fa-folder-plus', onClick: () => setShowNewFolderDialog(true) },
+        { label: '刷新资源', icon: 'fa-arrows-rotate', onClick: onRefresh },
+        { label: '课件教程', icon: 'fa-book-open', onClick: handleOpenGuide },
+    ].filter(action => !action.hidden);
+    const toneClasses = {
+        blue: 'bg-blue-50 text-blue-600',
+        amber: 'bg-amber-50 text-amber-600',
+        emerald: 'bg-emerald-50 text-emerald-600',
+        violet: 'bg-violet-50 text-violet-600',
+    };
+    const clampMonitorInterval = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return 1;
+        const clamped = Math.min(5, Math.max(0.5, n));
+        return Math.round(clamped * 2) / 2;
+    };
+    const monitorIntervalValue = clampMonitorInterval(settings?.monitorIntervalSec);
+    const renderScaleValue = (typeof settings?.renderScale === 'number' && Number.isFinite(settings.renderScale)) ? settings.renderScale : 0.96;
+    const uiScaleValue = (typeof settings?.uiScale === 'number' && Number.isFinite(settings.uiScale)) ? settings.uiScale : 1.0;
+    const settingToggles = [
+        { key: 'forceFullscreen', label: '强制学生全屏', desc: '授课时让学生端保持课堂专注。', icon: 'fa-expand' },
+        { key: 'syncFollow', label: '学生跟随翻页', desc: '教师翻页后学生端自动同步页面。', icon: 'fa-rotate' },
+        { key: 'alertJoin', label: '学生上线提醒', desc: '学生进入课堂时显示提醒。', icon: 'fa-user-plus' },
+        { key: 'alertLeave', label: '学生离线提醒', desc: '学生断开连接时显示提醒。', icon: 'fa-user-minus' },
+        { key: 'alertFullscreenExit', label: '退出全屏提醒', desc: '学生退出全屏时记录异常。', icon: 'fa-compress' },
+        { key: 'alertTabHidden', label: '切换页面提醒', desc: '学生切换窗口或隐藏页面时提示。', icon: 'fa-eye-slash' },
+        { key: 'monitorEnabled', label: '学生截图监控', desc: '按设定间隔采集学生端屏幕缩略图。', icon: 'fa-camera' },
+    ];
+    const handleSetPassword = () => {
+        if (!newPwd.trim()) return;
+        const encoder = new TextEncoder();
+        const data = encoder.encode(newPwd.trim());
+        crypto.subtle.digest('SHA-256', data).then(buf => {
+            const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+            socket && socket.emit('set-admin-password', { hash });
+            setNewPwd('');
+            setPwdStatus('ok');
+            setTimeout(() => setPwdStatus(null), 3000);
+        }).catch(() => {
+            setPwdStatus('err');
+            setTimeout(() => setPwdStatus(null), 3000);
+        });
+    };
+    const handleChangeSubmissionDir = async (dir = submissionDir) => {
+        if (!dir.trim()) return;
+        try {
+            const response = await fetch('/api/submission-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ submissionsDir: dir.trim() })
+            });
+            const result = await response.json();
+            setSubmissionDirStatus(result.success ? 'ok' : 'err');
+        } catch (_) {
+            setSubmissionDirStatus('err');
+        }
+        setTimeout(() => setSubmissionDirStatus(null), 3000);
+    };
+    const handleSelectSubmissionDir = async () => {
+        try {
+            const selectedDir = await window.electronAPI?.selectSubmissionDir?.();
+            if (selectedDir) {
+                setSubmissionDir(selectedDir);
+                await handleChangeSubmissionDir(selectedDir);
+            }
+        } catch (_) {
+            alert('无法选择目录');
+        }
+    };
+    const handleToggleDevTools = () => {
+        try {
+            if (window.electronAPI?.toggleDevTools) {
+                window.electronAPI.toggleDevTools();
+            } else {
+                alert('当前环境不支持打开调试面板');
+            }
+        } catch (_) {
+            alert('无法打开调试面板');
+        }
+    };
+    const handleOpenLogDir = async () => {
+        try {
+            await window.electronAPI?.openLogDir?.();
+        } catch (_) {
+            alert('无法打开日志目录');
+        }
+    };
+
     return (
-        <div className="teacher-shell-page h-full text-white overflow-hidden relative p-3">
+        <div className="h-full overflow-hidden relative bg-[#f6f8fc] text-slate-900 select-none">
             <div
-                className="teacher-glass-light teacher-glass-enter teacher-borderless flex items-center justify-between px-4 py-2.5 rounded-[24px] shrink-0 relative z-30"
+                className="h-[72px] border-b border-slate-200/80 bg-white/92 backdrop-blur-xl flex items-center justify-between px-6 relative z-30"
                 style={{WebkitAppRegion:'drag'}}
                 onMouseDown={(event) => window.__LumeSyncStartWindowDrag?.(event)}
             >
-                <div className="flex items-center space-x-2 text-white">
-                    <i className="fas fa-chalkboard-teacher text-sky-200 text-xl"></i>
-                    <h1 className="text-xl font-black text-white tracking-wide">教师控制台</h1>
+                <div className="flex items-center gap-4 min-w-0">
+                    <div className="h-10 w-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
+                        <i className="fas fa-cubes-stacked text-lg"></i>
+                    </div>
+                    <div className="min-w-0">
+                        <h1 className="text-xl font-black tracking-tight text-slate-950">LumeSync 教师控制台</h1>
+                        <p className="text-xs text-slate-500 mt-0.5">课件、班级与授课状态一屏掌握</p>
+                    </div>
                 </div>
-                <div className="flex items-center space-x-2 text-white" style={{WebkitAppRegion:'no-drag'}} data-window-control="true">
-                    <button
-                        onClick={() => window.__LumeSyncOpenClassroomWindow?.()}
-                        className="px-3 py-1.5 bg-sky-300/15 text-sky-100 rounded-full text-xs font-bold border border-sky-200/30 flex items-center hover:bg-sky-300/25 transition-colors"
-                        title="点击查看机房视图"
-                    >
-                        <span className="relative flex h-2 w-2 mr-1.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
-                        </span>
-                        在线学生: {studentCount}
+                <div className="flex items-center gap-3" style={{WebkitAppRegion:'no-drag'}} data-window-control="true">
+                    <button className="hidden min-[1120px]:flex h-11 w-[420px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-400 shadow-inner" title="搜索入口">
+                        <i className="fas fa-magnifying-glass text-slate-400"></i>
+                        <span>搜索课件、课程、班级、资源...</span>
                     </button>
-                    <button
-                        onClick={() => setShowSettings(v => !v)}
-                        className="teacher-liquid-button flex items-center px-2.5 py-1.5 rounded-xl text-xs"
-                        title="课堂设置"
-                    >
-                        <i className="fas fa-gear text-sm"></i>
-                    </button>
-                    <span className="px-3 py-1.5 bg-white/12 text-slate-100 rounded-full text-xs font-bold border border-white/20">
-                        老师端 (主控)
-                    </span>
                     <WindowControls />
                 </div>
             </div>
 
-            <div className="mt-3 flex h-[calc(100%-78px)] overflow-hidden gap-3">
-                {/* 左侧树形视图 */}
-                <div className="teacher-glass-dark teacher-glass-enter teacher-borderless w-64 rounded-[24px] overflow-y-auto shrink-0">
-                    <div className="p-2.5">
-                        <div className="flex items-center justify-between mb-3 px-2">
-                            <span className="text-slate-400 text-xs font-medium">文件夹</span>
-                        </div>
-                        <div className="space-y-1">
-                            <div
-                                onClick={() => setCurrentFolder(null)}
-                                className={`flex items-center px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                                    !currentFolder
-                                        ? 'bg-blue-500/20 text-blue-300'
-                                        : 'text-slate-300 hover:bg-slate-700'
+            <div className="flex h-[calc(100%-72px)] overflow-hidden">
+                <aside className="w-[244px] shrink-0 border-r border-slate-200/80 bg-white/86 px-4 py-5">
+                    <nav className="space-y-2">
+                        {[
+                            ['home', '首页', 'fa-house'],
+                            ['courses', '课件库', 'fa-folder-open'],
+                            ['classes', '班级管理', 'fa-users'],
+                            ['records', '授课记录', 'fa-clipboard-list'],
+                            ['resources', '资源中心', 'fa-box-archive'],
+                            ['submissions', '作业与提交', 'fa-square-check'],
+                            ['settings', '设置', 'fa-gear'],
+                        ].map(([tab, label, icon]) => (
+                            <button
+                                key={label}
+                                onClick={() => {
+                                    setActiveTab(tab);
+                                    if (tab === 'courses') setCurrentFolder(null);
+                                }}
+                                className={`flex h-12 w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-bold transition-colors ${
+                                    activeTab === tab ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                                 }`}
                             >
-                                <i className="fas fa-home mr-2 text-sm"></i>
-                                <span className="text-sm">课件库</span>
-                            </div>
-                            <FolderTreeNode
-                                folders={courseData.folders}
-                                parentId={null}
-                                currentFolder={currentFolder}
-                                dragOverFolder={dragOverFolder}
-                                onFolderClick={setCurrentFolder}
-                                onContextMenu={handleContextMenu}
-                                onDragOver={handleDragOver}
-                                onDragLeave={handleDragLeave}
-                                onDrop={handleDrop}
-                                courses={courseData.courses}
-                                depth={0}
-                                expandedFolders={expandedFolders}
-                                onToggleExpand={handleToggleExpand}
-                                onDragStart={handleDragStart}
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                {/* 右侧主视图 */}
-                <div className="teacher-glass-dark teacher-glass-enter teacher-borderless flex-1 flex flex-col overflow-hidden rounded-[24px]">
-                    {/* 工具栏 */}
-                    <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 shrink-0">
-                        <div className="flex items-center space-x-2 text-slate-100">
-                            <button
-                                onClick={() => setCurrentFolder(null)}
-                                disabled={!currentFolder}
-                                className={`flex items-center px-3 py-1.5 rounded text-sm transition-colors ${
-                                    currentFolder ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'
-                                }`}
-                            >
-                                <i className="fas fa-arrow-left mr-1.5"></i>返回
+                                <i className={`fas ${icon} w-5 text-center`}></i>
+                                <span>{label}</span>
                             </button>
-                            <div className="h-4 w-px bg-slate-600 mx-2"></div>
-                            <button
-                                onClick={() => setSelectedId(null)}
-                                className="flex items-center px-3 py-1.5 rounded text-slate-300 hover:bg-slate-700 text-sm transition-colors"
-                            >
-                                <i className="fas fa-folder-open mr-1.5"></i>课件选择
-                            </button>
-                        </div>
-                        <div className="flex items-center space-x-2 text-slate-100">
-                            <button
-                                onClick={() => setViewMode('grid')}
-                                className={`p-2 rounded transition-colors ${viewMode === 'grid' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
-                                title="大图标视图"
-                            >
-                                <i className="fas fa-th-large"></i>
-                            </button>
-                            <button
-                                onClick={() => setViewMode('list')}
-                                className={`p-2 rounded transition-colors ${viewMode === 'list' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
-                                title="详细列表视图"
-                            >
-                                <i className="fas fa-list"></i>
-                            </button>
-                            <div className="h-4 w-px bg-slate-600 mx-2"></div>
-                            <button
-                                onClick={() => setShowNewFolderDialog(true)}
-                                className="flex items-center px-3 py-1.5 bg-amber-400/80 hover:bg-amber-300 text-slate-950 rounded text-sm font-medium transition-colors"
-                            >
-                                <i className="fas fa-folder-plus mr-1.5"></i>新建文件夹
-                            </button>
-                            <button onClick={onRefresh} className="flex items-center px-3 py-1.5 teacher-liquid-button rounded text-sm transition-colors">
-                                <i className="fas fa-sync-alt mr-1.5"></i>刷新
-                            </button>
-                            <button onClick={handleDownloadSkill} className="flex items-center px-3 py-1.5 teacher-liquid-primary rounded text-sm font-medium transition-colors" title="下载 AI 课件生成 Skill 文件">
-                                <i className="fas fa-download mr-1.5"></i>下载 Skill
-                            </button>
-                            <button onClick={handleOpenGuide} className="flex items-center px-3 py-1.5 teacher-liquid-button rounded text-sm transition-colors" title="查看课件开发教程">
-                                <i className="fas fa-book-open mr-1.5"></i>教程
-                            </button>
-                            {window.electronAPI?.importCourse && (
-                                <button onClick={handleImportCourse} className="flex items-center px-3 py-1.5 bg-emerald-500/80 hover:bg-emerald-400 text-white rounded text-sm font-medium transition-colors">
-                                    <i className="fas fa-file-import mr-1.5"></i>导入
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* 地址栏 */}
-                    <div className="px-5 py-3 border-b border-white/10 flex items-center shrink-0">
-                        {getBreadcrumbs().map((crumb, idx) => (
-                            <React.Fragment key={crumb.id}>
-                                {idx > 0 && <i className="fas fa-chevron-right text-slate-600 text-xs mx-2"></i>}
-                                <button
-                                    onClick={() => setCurrentFolder(crumb.id)}
-                                    className="text-sm text-slate-300 hover:text-blue-400 transition-colors"
-                                >
-                                    {crumb.name}
-                                </button>
-                            </React.Fragment>
                         ))}
+                    </nav>
+                    <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-center justify-between text-sm font-bold text-slate-700">
+                            <span>软件占用</span>
+                            <i className="fas fa-cloud text-blue-500"></i>
+                        </div>
+                        <div className="mt-3 h-2 rounded-full bg-slate-200 overflow-hidden">
+                            <div className="h-full rounded-full bg-blue-600" style={{ width: `${storagePercent}%` }}></div>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500">{storageLabel}，{storageUsage?.fileCount || 0} 个文件</p>
                     </div>
+                </aside>
 
-                    {/* 文件列表 */}
-                    <div className="flex-1 overflow-y-auto p-4">
-                        {viewMode === 'grid' ? (
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                {folderItems.map(folder => (
-                                    <div
-                                        key={folder.id}
-                                        draggable
-                                        onDoubleClick={() => handleDoubleClick(folder, 'folder')}
-                                        onContextMenu={(e) => handleContextMenu(e, folder, 'folder')}
-                                        onDragStart={(e) => handleDragStart(e, folder, 'folder')}
-                                        onDragOver={(e) => handleDragOver(e, folder)}
-                                        onDragLeave={handleDragLeave}
-                                        onDrop={(e) => handleDrop(e, folder)}
-                                        className={`relative flex flex-col items-center p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                                            dragOverFolder === folder.id
-                                                ? 'bg-amber-500/20 border-amber-500/30'
-                                                : draggedItem?.item?.id === folder.id
-                                                    ? 'opacity-50'
-                                                    : 'bg-white/10 border-white/10 hover:border-sky-300/40 hover:bg-white/15'
+                <main className="flex-1 overflow-y-auto p-6">
+                    {activeTab === 'home' && (
+                    <>
+                    <section className="grid gap-5 xl:grid-cols-[1fr_344px]">
+                        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm overflow-hidden relative">
+                            <div className="relative z-10 max-w-3xl">
+                                <p className="text-sm font-bold text-blue-600">下午好，老师</p>
+                                <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">今日课堂安排与教学数据一目了然</h2>
+                                <p className="mt-3 text-sm text-slate-500">选择课件后即可开始授课，也可以先整理资源或查看学生连接状态。</p>
+                            </div>
+                            <div className="relative z-10 mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                {summaryStats.map(stat => (
+                                    <button
+                                        key={stat.label}
+                                        onClick={stat.onClick}
+                                        className={`rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all ${
+                                            stat.onClick ? 'cursor-pointer hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md' : 'cursor-default'
                                         }`}
                                     >
-                                        <div className="w-16 h-16 bg-amber-500/20 rounded-xl flex items-center justify-center text-3xl mb-3 border border-amber-500/30">
-                                            <i className="fas fa-folder text-amber-400"></i>
+                                        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${toneClasses[stat.tone]}`}>
+                                            <i className={`fas ${stat.icon}`}></i>
                                         </div>
-                                        <span className="text-white text-sm text-center font-medium truncate w-full">{folder.name}</span>
-                                        <span className="text-slate-500 text-xs mt-1">
-                                            {courseData.courses.filter(c => c.folderId === folder.id).length +
-                                             courseData.folders.filter(f => f.parentId === folder.id).reduce((sum, f) =>
-                                                 sum + courseData.courses.filter(c => c.folderId === f.id).length, 0)} 项
-                                        </span>
-                                    </div>
-                                ))}
-                                {courseItems.map(course => (
-                                    <div
-                                        key={course.id}
-                                        draggable
-                                        onClick={() => handleSelect(course.id)}
-                                        onContextMenu={(e) => handleContextMenu(e, course, 'course')}
-                                        onDragStart={(e) => handleDragStart(e, course, 'course')}
-                                        className={`relative flex flex-col items-center p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                                            selectedId === course.id
-                                                ? 'bg-blue-500/20 border-blue-500'
-                                                : draggedItem?.item?.id === course.id
-                                                    ? 'opacity-50'
-                                                    : 'bg-white/10 border-white/10 hover:border-sky-300/40 hover:bg-white/15'
-                                        }`}
-                                    >
-                                        <div className={`w-16 h-16 rounded-xl bg-gradient-to-br ${course.color} flex items-center justify-center text-3xl mb-3 shadow-lg`}>
-                                            {course.icon}
+                                        <div className="mt-4 flex items-end gap-1">
+                                            <span className="text-3xl font-black tracking-tight text-slate-950">{stat.value}</span>
+                                            <span className="pb-1 text-sm text-slate-500">{stat.suffix}</span>
                                         </div>
-                                        <span className="text-white text-sm text-center font-medium truncate w-full">{course.title}</span>
-                                        <span className="text-slate-500 text-xs mt-1 truncate w-full">{course.file}</span>
-                                        {selectedId === course.id && (
-                                            <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                                                <i className="fas fa-check text-white text-xs"></i>
-                                            </div>
-                                        )}
-                                    </div>
+                                        <p className="mt-1 text-sm text-slate-500">{stat.label}</p>
+                                    </button>
                                 ))}
                             </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {/* 表头 */}
-                                <div className="flex items-center px-3 py-2 bg-white/10 rounded-t-2xl border-b border-white/10 text-xs text-slate-400 font-medium">
-                                    <div className="w-10"></div>
-                                    <div className="flex-1">名称</div>
-                                    <div className="w-32">类型</div>
-                                    <div className="w-48">文件名</div>
+                            <div className="pointer-events-none absolute right-8 top-8 hidden h-48 w-72 rounded-[32px] bg-gradient-to-br from-blue-50 via-cyan-50 to-white xl:block"></div>
+                        </div>
+
+                        <aside className="space-y-5">
+                            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="font-black text-slate-950">近期待办</h3>
+                                    <button onClick={onRefresh} className="text-xs font-bold text-blue-600 hover:text-blue-700">刷新</button>
                                 </div>
-                                {/* 文件夹行 */}
-                                {folderItems.map(folder => (
-                                    <div
-                                        key={folder.id}
-                                        draggable
-                                        onDoubleClick={() => handleDoubleClick(folder, 'folder')}
-                                        onContextMenu={(e) => handleContextMenu(e, folder, 'folder')}
-                                        onDragStart={(e) => handleDragStart(e, folder, 'folder')}
-                                        onDragOver={(e) => handleDragOver(e, folder)}
-                                        onDragLeave={handleDragLeave}
-                                        onDrop={(e) => handleDrop(e, folder)}
-                                        className={`relative flex items-center px-3 py-3 rounded-lg cursor-pointer transition-colors ${
-                                            dragOverFolder === folder.id
-                                                ? 'bg-amber-500/20 border border-amber-500/30'
-                                                : draggedItem?.item?.id === folder.id
-                                                    ? 'opacity-50'
-                                                    : 'bg-white/10 hover:bg-white/15'
+                                <div className="mt-4 space-y-3">
+                                    {pendingItems.map(item => (
+                                        <button key={item.title} onClick={item.onClick} className={`flex w-full items-center gap-3 rounded-2xl p-2 text-left transition-colors ${item.onClick ? 'hover:bg-slate-50' : 'cursor-default'}`}>
+                                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.bg} ${item.color}`}>
+                                                <i className={`fas ${item.icon}`}></i>
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate text-sm font-bold text-slate-800">{item.title}</p>
+                                                <p className="truncate text-xs text-slate-500">{item.detail}</p>
+                                            </div>
+                                            <span className="text-xs font-bold text-blue-600">{item.action}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                        </aside>
+                    </section>
+                    </>
+                    )}
+
+                    {activeTab === 'courses' && (
+                    <section className="mt-5 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h3 className="text-lg font-black text-slate-950">我的课件与课程</h3>
+                                <div className="mt-2 flex flex-wrap items-center text-sm text-slate-500">
+                                    {getBreadcrumbs().map((crumb, idx) => (
+                                        <React.Fragment key={crumb.id ?? 'root'}>
+                                            {idx > 0 && <i className="fas fa-chevron-right text-slate-300 text-xs mx-2"></i>}
+                                            <button onClick={() => setCurrentFolder(crumb.id)} className="font-medium hover:text-blue-600">{crumb.name}</button>
+                                        </React.Fragment>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setCurrentFolder(null)}
+                                    disabled={!currentFolder}
+                                    className={`flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-bold transition-colors ${
+                                        currentFolder ? 'border-slate-200 text-slate-700 hover:bg-slate-50' : 'border-slate-100 text-slate-300 cursor-not-allowed'
+                                    }`}
+                                >
+                                    <i className="fas fa-arrow-left"></i>返回
+                                </button>
+                                <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                                    <button onClick={() => setViewMode('grid')} className={`h-8 w-8 rounded-lg ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`} title="大图标视图">
+                                        <i className="fas fa-table-cells-large"></i>
+                                    </button>
+                                    <button onClick={() => setViewMode('list')} className={`h-8 w-8 rounded-lg ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`} title="详细列表视图">
+                                        <i className="fas fa-list"></i>
+                                    </button>
+                                </div>
+                                <button onClick={handleDownloadSkill} className="hidden sm:flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700 hover:bg-slate-50" title="下载 AI 课件生成 Skill 文件">
+                                    <i className="fas fa-download text-blue-600"></i>Skill
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="mt-5 rounded-[24px] border border-slate-200 bg-slate-50 p-3">
+                            <div className="flex flex-wrap items-center gap-3">
+                                {quickActions.map(action => (
+                                    <button
+                                        key={action.label}
+                                        onClick={action.onClick}
+                                        disabled={action.disabled}
+                                        className={`flex h-11 items-center justify-center gap-2 rounded-2xl border px-4 text-sm font-bold transition-colors ${
+                                            action.primary
+                                                ? (action.disabled ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed' : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700')
+                                                : 'border-slate-200 bg-white text-slate-700 hover:bg-white hover:text-blue-700'
                                         }`}
                                     >
-                                        <div className="w-10">
-                                            <i className="fas fa-folder text-amber-400 text-xl"></i>
-                                        </div>
-                                        <div className="flex-1 text-white text-sm truncate">{folder.name}</div>
-                                        <div className="w-32 text-slate-400 text-sm">文件夹</div>
-                                        <div className="w-48 text-slate-500 text-xs truncate">-</div>
-                                    </div>
+                                        <i className={`fas ${action.icon}`}></i>
+                                        <span>{action.label}</span>
+                                    </button>
                                 ))}
-                                {/* 课件行 */}
-                                {courseItems.map(course => (
-                                    <div
-                                        key={course.id}
-                                        draggable
-                                        onClick={() => handleSelect(course.id)}
-                                        onContextMenu={(e) => handleContextMenu(e, course, 'course')}
-                                        onDragStart={(e) => handleDragStart(e, course, 'course')}
-                                        className={`relative flex items-center px-3 py-3 rounded-lg cursor-pointer transition-colors ${
-                                            selectedId === course.id
-                                                ? 'bg-blue-500/20'
-                                                : draggedItem?.item?.id === course.id
-                                                    ? 'opacity-50'
-                                                    : 'bg-white/10 hover:bg-white/15'
-                                        }`}
-                                    >
-                                        <div className="w-10">
-                                            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${course.color} flex items-center justify-center`}>
+                            </div>
+                        </div>
+
+                        <div className="mt-5 min-h-[260px]">
+                            {viewMode === 'grid' ? (
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                                    {folderItems.map(folder => (
+                                        <div
+                                            key={folder.id}
+                                            draggable
+                                            onDoubleClick={() => handleDoubleClick(folder, 'folder')}
+                                            onContextMenu={(e) => handleContextMenu(e, folder, 'folder')}
+                                            onDragStart={(e) => handleDragStart(e, folder, 'folder')}
+                                            onDragOver={(e) => handleDragOver(e, folder)}
+                                            onDragLeave={handleDragLeave}
+                                            onDrop={(e) => handleDrop(e, folder)}
+                                            className={`relative min-h-[154px] cursor-pointer rounded-2xl border p-4 transition-all ${
+                                                dragOverFolder === folder.id
+                                                    ? 'border-amber-300 bg-amber-50'
+                                                    : draggedItem?.item?.id === folder.id
+                                                        ? 'opacity-50'
+                                                        : 'border-slate-200 bg-white hover:border-amber-200 hover:shadow-md'
+                                            }`}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-100 bg-amber-50 text-2xl text-amber-500">
+                                                    <i className="fas fa-folder"></i>
+                                                </div>
+                                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-500">
+                                                    {courseData.courses.filter(c => c.folderId === folder.id).length +
+                                                     courseData.folders.filter(f => f.parentId === folder.id).reduce((sum, f) =>
+                                                         sum + courseData.courses.filter(c => c.folderId === f.id).length, 0)} 项
+                                                </span>
+                                            </div>
+                                            <div className="mt-5">
+                                                <p className="truncate text-base font-black text-slate-900">{folder.name}</p>
+                                                <p className="mt-1 text-sm text-slate-500">双击进入文件夹</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {courseItems.map(course => (
+                                        <div
+                                            key={course.id}
+                                            draggable
+                                            onClick={() => handleSelect(course.id)}
+                                            onContextMenu={(e) => handleContextMenu(e, course, 'course')}
+                                            onDragStart={(e) => handleDragStart(e, course, 'course')}
+                                            className={`relative min-h-[176px] cursor-pointer rounded-2xl border p-4 transition-all ${
+                                                selectedId === course.id
+                                                    ? 'border-blue-500 bg-blue-50 shadow-[0_18px_45px_rgba(37,99,235,0.16)]'
+                                                    : draggedItem?.item?.id === course.id
+                                                        ? 'opacity-50'
+                                                        : 'border-slate-200 bg-white hover:border-blue-200 hover:shadow-md'
+                                            }`}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${course.color || 'from-blue-500 to-cyan-400'} text-2xl shadow-sm`}>
+                                                    {course.icon}
+                                                </div>
+                                                {selectedId === course.id && (
+                                                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
+                                                        <i className="fas fa-check text-xs"></i>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="mt-5">
+                                                <p className="truncate text-base font-black text-slate-900">{course.title}</p>
+                                                <p className="mt-1 truncate text-sm text-slate-500">{course.file}</p>
+                                            </div>
+                                            <div className="mt-4 h-1.5 rounded-full bg-slate-100">
+                                                <div className="h-full w-2/3 rounded-full bg-blue-500"></div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="overflow-hidden rounded-2xl border border-slate-200">
+                                    <div className="grid grid-cols-[44px_1fr_120px_220px] items-center bg-slate-50 px-4 py-3 text-xs font-bold text-slate-500">
+                                        <div></div>
+                                        <div>名称</div>
+                                        <div>类型</div>
+                                        <div>文件名</div>
+                                    </div>
+                                    {folderItems.map(folder => (
+                                        <div
+                                            key={folder.id}
+                                            draggable
+                                            onDoubleClick={() => handleDoubleClick(folder, 'folder')}
+                                            onContextMenu={(e) => handleContextMenu(e, folder, 'folder')}
+                                            onDragStart={(e) => handleDragStart(e, folder, 'folder')}
+                                            onDragOver={(e) => handleDragOver(e, folder)}
+                                            onDragLeave={handleDragLeave}
+                                            onDrop={(e) => handleDrop(e, folder)}
+                                            className={`grid grid-cols-[44px_1fr_120px_220px] items-center border-t border-slate-100 px-4 py-3 text-sm transition-colors ${
+                                                dragOverFolder === folder.id ? 'bg-amber-50' : 'hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            <i className="fas fa-folder text-xl text-amber-500"></i>
+                                            <div className="truncate font-bold text-slate-900">{folder.name}</div>
+                                            <div className="text-slate-500">文件夹</div>
+                                            <div className="truncate text-xs text-slate-400">-</div>
+                                        </div>
+                                    ))}
+                                    {courseItems.map(course => (
+                                        <div
+                                            key={course.id}
+                                            draggable
+                                            onClick={() => handleSelect(course.id)}
+                                            onContextMenu={(e) => handleContextMenu(e, course, 'course')}
+                                            onDragStart={(e) => handleDragStart(e, course, 'course')}
+                                            className={`grid grid-cols-[44px_1fr_120px_220px] items-center border-t border-slate-100 px-4 py-3 text-sm transition-colors ${
+                                                selectedId === course.id ? 'bg-blue-50' : 'hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            <div className={`flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br ${course.color || 'from-blue-500 to-cyan-400'}`}>
                                                 {course.icon}
                                             </div>
+                                            <div className="truncate font-bold text-slate-900">{course.title}</div>
+                                            <div className="text-slate-500">课件</div>
+                                            <div className="truncate text-xs text-slate-400">{course.file}</div>
                                         </div>
-                                        <div className="flex-1 text-white text-sm truncate">{course.title}</div>
-                                        <div className="w-32 text-slate-400 text-sm">课件</div>
-                                        <div className="w-48 text-slate-500 text-xs truncate">{course.file}</div>
-                                        {selectedId === course.id && (
-                                            <div className="absolute top-4 right-4 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                                                <i className="fas fa-check text-white text-xs"></i>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                                    ))}
+                                </div>
+                            )}
 
-                        {folderItems.length === 0 && courseItems.length === 0 && (
-                            <div className="text-center py-12 bg-white/10 rounded-3xl border border-white/10">
-                                <i className="fas fa-folder-open text-4xl text-slate-600 mb-3"></i>
-                                <p className="text-slate-500 text-sm">此文件夹为空</p>
-                                <button
-                                    onClick={() => setShowNewFolderDialog(true)}
-                                    className="mt-4 px-4 py-2 teacher-liquid-primary rounded-lg text-sm font-medium transition-colors"
-                                >
-                                    <i className="fas fa-folder-plus mr-1.5"></i>新建文件夹
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 状态栏 */}
-                    <div className="px-5 py-2 border-t border-white/10 text-xs text-slate-400 flex items-center justify-between shrink-0">
-                        <span>{folderItems.length} 个文件夹, {courseItems.length} 个课件</span>
-                        {selectedId && (
-                            <span className="text-slate-400">已选择: {courseData.courses.find(c => c.id === selectedId)?.title}</span>
-                        )}
-                    </div>
-
-                    {/* 底部开始按钮 */}
-                    <div className="px-5 py-4 border-t border-white/10 flex justify-between items-center shrink-0">
-                        <div className="flex items-center space-x-2 text-slate-100">
-                            <span className="text-slate-400 text-sm">共 {courseData.courses.length} 个课件</span>
+                            {folderItems.length === 0 && courseItems.length === 0 && (
+                                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 py-12 text-center">
+                                    <i className="fas fa-folder-open text-4xl text-slate-300 mb-3"></i>
+                                    <p className="text-sm font-bold text-slate-600">此文件夹为空</p>
+                                    <button
+                                        onClick={() => setShowNewFolderDialog(true)}
+                                        className="mt-4 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700"
+                                    >
+                                        <i className="fas fa-folder-plus mr-1.5"></i>新建文件夹
+                                    </button>
+                                </div>
+                            )}
                         </div>
-                        <button
-                            onClick={handleStartCourse}
-                            disabled={!selectedId}
-                            className={`flex items-center px-8 py-3 rounded-xl font-bold text-lg transition-all ${
-                                selectedId ? 'teacher-liquid-primary' : 'bg-white/10 text-slate-500 cursor-not-allowed'
-                            }`}
-                        >
-                            <i className="fas fa-play mr-3"></i>开始授课
-                        </button>
-                    </div>
-                </div>
+
+                        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                            <div className="text-sm text-slate-500">
+                                当前显示 {totalVisibleItems} 项，共 {courseData.courses.length} 个课件
+                                {selectedCourse && <span className="ml-3 font-bold text-slate-800">已选择：{selectedCourse.title}</span>}
+                            </div>
+                            <button
+                                onClick={handleStartCourse}
+                                disabled={!selectedId}
+                                className={`flex h-11 items-center gap-2 rounded-2xl px-6 text-sm font-black transition-colors ${
+                                    selectedId ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                }`}
+                            >
+                                <i className="fas fa-play"></i>开始授课
+                            </button>
+                        </div>
+                    </section>
+                    )}
+
+                    {activeTab === 'settings' && (
+                        <section className="space-y-5">
+                            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                                <p className="text-sm font-bold text-blue-600">系统设置</p>
+                                <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">课堂外配置</h2>
+                                <p className="mt-2 text-sm text-slate-500">管理默认授课行为、显示比例、提交目录与调试工具。</p>
+                            </div>
+
+                            <div className="grid gap-5 xl:grid-cols-[248px_1fr]">
+                                <aside className="h-fit rounded-[28px] border border-slate-200 bg-white p-3 shadow-sm">
+                                    {[
+                                        ['classroom', '课堂行为', 'fa-chalkboard-user'],
+                                        ['display', '显示与监控', 'fa-sliders'],
+                                        ['security', '安全与提交', 'fa-shield-halved'],
+                                        ['system', '系统工具', 'fa-screwdriver-wrench'],
+                                    ].map(([key, label, icon]) => (
+                                        <button
+                                            key={key}
+                                            onClick={() => setSettingsSection(key)}
+                                            className={`flex h-12 w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-bold transition-colors ${
+                                                settingsSection === key ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                                            }`}
+                                        >
+                                            <i className={`fas ${icon} w-5 text-center`}></i>
+                                            <span>{label}</span>
+                                        </button>
+                                    ))}
+                                </aside>
+
+                                <div className="space-y-5">
+                                    {settingsSection === 'classroom' && (
+                                        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                                            <div className="flex items-center justify-between gap-4">
+                                                <div>
+                                                    <h3 className="text-lg font-black text-slate-950">课堂行为</h3>
+                                                    <p className="mt-1 text-sm text-slate-500">这些选项会作为每次授课的默认策略。</p>
+                                                </div>
+                                                <div className="hidden rounded-2xl bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 sm:block">
+                                                    {settingToggles.filter(item => settings?.[item.key]).length} 项已开启
+                                                </div>
+                                            </div>
+                                            <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                                                {settingToggles.map(item => (
+                                                    <div key={item.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                                        <div className="flex items-start justify-between gap-4">
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm">
+                                                                        <i className={`fas ${item.icon}`}></i>
+                                                                    </span>
+                                                                    <div>
+                                                                        <p className="font-black text-slate-900">{item.label}</p>
+                                                                        <p className="mt-1 text-xs leading-relaxed text-slate-500">{item.desc}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => onSettingsChange(item.key, !settings?.[item.key])}
+                                                                className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${settings?.[item.key] ? 'bg-blue-600' : 'bg-slate-300'}`}
+                                                            >
+                                                                <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${settings?.[item.key] ? 'left-6' : 'left-1'}`}></span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {settingsSection === 'display' && (
+                                        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                                            <h3 className="text-lg font-black text-slate-950">显示与监控</h3>
+                                            <p className="mt-1 text-sm text-slate-500">调整教师端画布显示和学生截图频率。</p>
+                                            <div className="mt-5 grid gap-4 lg:grid-cols-3">
+                                                {[
+                                                    ['截图间隔', `${monitorIntervalValue}s`, 0.5, 5, 0.5, monitorIntervalValue, value => onSettingsChange('monitorIntervalSec', clampMonitorInterval(value)), 'monitorIntervalSec', 1],
+                                                    ['课件页面缩放', `${Math.round(uiScaleValue * 100)}%`, 0.8, 1.2, 0.01, uiScaleValue, value => onSettingsChange('uiScale', Number(value)), 'uiScale', 1],
+                                                    ['课件内容缩放', `${Math.round(renderScaleValue * 100)}%`, 0.6, 1.2, 0.01, renderScaleValue, value => onSettingsChange('renderScale', Number(value)), 'renderScale', 0.96],
+                                                ].map(([label, valueLabel, min, max, step, value, onChange, key, resetValue]) => (
+                                                    <div key={key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="font-black text-slate-900">{label}</span>
+                                                            <span className="rounded-xl bg-white px-2.5 py-1 text-sm font-black text-blue-700 shadow-sm">{valueLabel}</span>
+                                                        </div>
+                                                        <input
+                                                            type="range"
+                                                            min={min}
+                                                            max={max}
+                                                            step={step}
+                                                            value={value}
+                                                            onChange={e => onChange(e.target.value)}
+                                                            className="mt-5 w-full accent-blue-600"
+                                                        />
+                                                        <button
+                                                            onClick={() => onSettingsChange(key, resetValue)}
+                                                            className="mt-3 text-xs font-bold text-blue-600 hover:text-blue-700"
+                                                        >
+                                                            恢复默认
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {settingsSection === 'security' && (
+                                        <div className="grid gap-5 lg:grid-cols-2">
+                                            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                                                <h3 className="text-lg font-black text-slate-950">学生端管理员密码</h3>
+                                                <p className="mt-1 text-sm text-slate-500">推送后在线学生端会立即生效。</p>
+                                                <input
+                                                    type="password"
+                                                    value={newPwd}
+                                                    onChange={e => setNewPwd(e.target.value)}
+                                                    onKeyDown={e => e.key === 'Enter' && handleSetPassword()}
+                                                    placeholder="输入新密码"
+                                                    className="mt-5 h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                                                />
+                                                <button
+                                                    onClick={handleSetPassword}
+                                                    disabled={!newPwd.trim()}
+                                                    className={`mt-3 h-11 w-full rounded-2xl text-sm font-black transition-colors ${
+                                                        newPwd.trim() ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                                    }`}
+                                                >
+                                                    <i className="fas fa-paper-plane mr-2"></i>推送到所有学生端
+                                                </button>
+                                                {pwdStatus === 'ok' && <p className="mt-3 text-xs font-bold text-emerald-600">已推送，在线学生将立即生效</p>}
+                                                {pwdStatus === 'err' && <p className="mt-3 text-xs font-bold text-red-500">推送失败，请重试</p>}
+                                            </div>
+
+                                            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                                                <h3 className="text-lg font-black text-slate-950">学生提交内容存储位置</h3>
+                                                <p className="mt-1 text-sm text-slate-500">设置作业与提交文件保存目录。</p>
+                                                <div className="mt-5 flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={submissionDir}
+                                                        onChange={e => setSubmissionDir(e.target.value)}
+                                                        placeholder="输入存储目录路径"
+                                                        className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                                                    />
+                                                    <button
+                                                        onClick={handleSelectSubmissionDir}
+                                                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-blue-600 hover:bg-blue-50"
+                                                        title="选择目录"
+                                                    >
+                                                        <i className="fas fa-folder-open"></i>
+                                                    </button>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleChangeSubmissionDir()}
+                                                    disabled={!submissionDir.trim()}
+                                                    className={`mt-3 h-11 w-full rounded-2xl text-sm font-black transition-colors ${
+                                                        submissionDir.trim() ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                                    }`}
+                                                >
+                                                    <i className="fas fa-save mr-2"></i>更新存储位置
+                                                </button>
+                                                {submissionDirStatus === 'ok' && <p className="mt-3 text-xs font-bold text-emerald-600">已更新存储位置</p>}
+                                                {submissionDirStatus === 'err' && <p className="mt-3 text-xs font-bold text-red-500">更新失败，请检查路径</p>}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {settingsSection === 'system' && (
+                                        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                                            <h3 className="text-lg font-black text-slate-950">系统工具</h3>
+                                            <p className="mt-1 text-sm text-slate-500">用于排查问题与查看本机日志。</p>
+                                            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                                                <button onClick={handleToggleDevTools} className="flex h-14 items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-black text-slate-700 hover:bg-white hover:text-blue-700">
+                                                    <i className="fas fa-bug text-blue-600"></i>打开调试面板
+                                                </button>
+                                                <button onClick={handleOpenLogDir} className="flex h-14 items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-black text-slate-700 hover:bg-white hover:text-blue-700">
+                                                    <i className="fas fa-folder-open text-blue-600"></i>打开日志目录
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </section>
+                    )}
+
+                    {!['home', 'courses', 'settings'].includes(activeTab) && (
+                        <section className="rounded-[28px] border border-slate-200 bg-white p-10 text-center shadow-sm">
+                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                                <i className="fas fa-screwdriver-wrench text-xl"></i>
+                            </div>
+                            <h3 className="mt-5 text-xl font-black text-slate-950">该模块将在这里打开</h3>
+                            <p className="mt-2 text-sm text-slate-500">当前主页已聚焦常用课堂入口，后续模块会沿用同一套简洁布局。</p>
+                        </section>
+                    )}
+                </main>
             </div>
 
             {/* 新建文件夹对话框 */}
@@ -1212,10 +1566,6 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
                 </div>
             )}
 
-            {showSettings && (
-                <SettingsPanel settings={settings} onSettingsChange={onSettingsChange} socket={socket} onClose={() => setShowSettings(false)} zIndex={(window.__getTeacherLayerClass?.('drawer') || 'z-[10030]')} />
-            )}
-
             {showGuide && (
                 <div className={`fixed inset-0 ${(window.__getTeacherLayerClass?.('modal') || 'z-[10020]')} flex`} onClick={() => setShowGuide(false)}>
                     <div className="teacher-glass-drawer ml-auto w-full max-w-2xl h-full flex flex-col" onClick={e => e.stopPropagation()}>
@@ -1355,13 +1705,3 @@ function CourseSelector({ courses, currentCourseId, onSelectCourse, onRefresh, s
         </div>
     );
 }
-
-
-
-
-
-
-
-
-
-

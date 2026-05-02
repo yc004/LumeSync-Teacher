@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <commdlg.h>
+#include <dwmapi.h>
 #include <iphlpapi.h>
 #include <shellapi.h>
 #include <tlhelp32.h>
@@ -9,6 +10,7 @@
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "comdlg32.lib")
 #pragma comment(lib, "crypt32.lib")
+#pragma comment(lib, "dwmapi.lib")
 
 #include <algorithm>
 #include <cmath>
@@ -40,6 +42,10 @@ namespace {
 
 using lumesync::TeacherConfig;
 using lumesync::TeacherWindowSettings;
+
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
 
 constexpr wchar_t kMainWindowClassName[] = L"LumeSyncTeacherShellWindow";
 constexpr wchar_t kMainInstanceMutex[] = L"Global\\LumeSyncTeacherShell.Main";
@@ -99,6 +105,19 @@ void EnableDpiAwareness() {
   if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
     SetProcessDPIAware();
   }
+}
+
+void ApplyStandardWindowCorners(HWND hwnd) {
+  if (!hwnd) return;
+
+  // Windows 11 standard rounded corners. Older Windows builds simply ignore
+  // this DWM attribute, so the custom shell remains compatible.
+  const DWORD preference = 2;  // DWMWCP_ROUND
+  DwmSetWindowAttribute(
+      hwnd,
+      DWMWA_WINDOW_CORNER_PREFERENCE,
+      &preference,
+      sizeof(preference));
 }
 
 RECT DefaultWindowRect() {
@@ -684,6 +703,7 @@ class TeacherShellApp {
       return false;
     }
 
+    ApplyStandardWindowCorners(hwnd_);
     ShowWindow(hwnd_, nCmdShow);
     UpdateWindow(hwnd_);
     return true;

@@ -76,115 +76,165 @@ const ensureTeacherShellStyles = () => {
     style.id = 'teacher-shell-liquid-style';
     style.textContent = `
         :root {
-            --teacher-bg: #07111f;
-            --teacher-glass: rgba(15, 23, 42, 0.68);
-            --teacher-glass-strong: rgba(15, 23, 42, 0.82);
-            --teacher-glass-soft: rgba(15, 23, 42, 0.54);
-            --teacher-border: rgba(255, 255, 255, 0.18);
-            --teacher-border-strong: rgba(255, 255, 255, 0.28);
-            --teacher-accent: #38bdf8;
+            --teacher-bg: #f6f8fc;
+            --teacher-surface: rgba(255, 255, 255, 0.94);
+            --teacher-surface-soft: rgba(248, 250, 252, 0.92);
+            --teacher-border: rgba(226, 232, 240, 0.92);
+            --teacher-border-strong: rgba(191, 219, 254, 0.95);
+            --teacher-accent: #2563eb;
         }
         .teacher-shell-page {
+            background: var(--teacher-bg);
+            color: #0f172a;
+        }
+        .teacher-classroom-shell {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
             background:
-                radial-gradient(circle at 12% 8%, rgba(56, 189, 248, 0.26), transparent 30%),
-                radial-gradient(circle at 88% 18%, rgba(16, 185, 129, 0.18), transparent 28%),
-                linear-gradient(145deg, #020617 0%, #07111f 50%, #0f172a 100%);
-            color: #f8fafc;
+                linear-gradient(180deg, rgba(239, 246, 255, 0.72) 0%, rgba(246, 248, 252, 0) 38%),
+                var(--teacher-bg);
         }
-        .teacher-glass {
-            background: linear-gradient(135deg, var(--teacher-glass), var(--teacher-glass-soft));
-            border: 1px solid var(--teacher-border);
-            box-shadow: 0 24px 80px rgba(2, 6, 23, 0.42), inset 0 1px 0 rgba(255,255,255,0.18);
-            backdrop-filter: blur(26px) saturate(155%);
-            -webkit-backdrop-filter: blur(26px) saturate(155%);
-            color: #f8fafc;
+        .teacher-classroom-header {
+            height: 58px;
+            flex: 0 0 58px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 0 18px 0 22px;
+            background: rgba(255, 255, 255, 0.88);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.92);
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+            backdrop-filter: blur(18px) saturate(150%);
+            -webkit-backdrop-filter: blur(18px) saturate(150%);
         }
-        .teacher-glass-dark {
-            background: linear-gradient(135deg, var(--teacher-glass-strong), var(--teacher-glass));
-            border: 1px solid var(--teacher-border);
-            box-shadow: 0 24px 90px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255,255,255,0.16);
-            backdrop-filter: blur(28px) saturate(160%);
-            -webkit-backdrop-filter: blur(28px) saturate(160%);
-            color: #f8fafc;
-        }
-        .teacher-glass-light {
-            background: linear-gradient(135deg, var(--teacher-glass), var(--teacher-glass-soft));
-            border: 1px solid var(--teacher-border);
-            box-shadow: 0 20px 70px rgba(2, 6, 23, 0.36), inset 0 1px 0 rgba(255,255,255,0.18);
-            backdrop-filter: blur(26px) saturate(155%);
-            -webkit-backdrop-filter: blur(26px) saturate(155%);
-            color: #f8fafc;
-        }
-        .teacher-floating-topbar {
-            position: absolute;
-            left: 16px;
-            right: 16px;
-            top: 14px;
-            z-index: 9990;
-            min-height: 58px;
-            border-radius: 24px;
-            padding: 10px 14px;
-        }
-        .teacher-floating-dock {
-            position: absolute;
-            left: 50%;
-            bottom: 14px;
-            z-index: 9990;
-            transform: translateX(-50%);
-            pointer-events: auto;
-            border-radius: 24px;
+        .teacher-classroom-main {
+            min-height: 0;
+            flex: 1;
+            position: relative;
+            display: block;
             padding: 10px;
         }
+        .teacher-stage-panel {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+        .teacher-stage-toolbar,
+        .teacher-side-panel {
+            background: rgba(255, 255, 255, 0.94);
+            border: 1px solid rgba(226, 232, 240, 0.92);
+            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+            backdrop-filter: blur(18px) saturate(150%);
+            -webkit-backdrop-filter: blur(18px) saturate(150%);
+        }
+        .teacher-stage-toolbar {
+            display: none !important;
+        }
+        .teacher-side-panel {
+            position: absolute;
+            right: 18px;
+            top: 18px;
+            z-index: 9991;
+            width: 238px;
+            max-height: calc(100% - 36px);
+            min-height: 0;
+            overflow-y: auto;
+            border-radius: 20px;
+            padding: 12px;
+            box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+        }
+        .teacher-glass {
+            background: var(--teacher-surface);
+            border: 1px solid var(--teacher-border);
+            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+            backdrop-filter: blur(18px) saturate(150%);
+            -webkit-backdrop-filter: blur(18px) saturate(150%);
+            color: #0f172a;
+        }
+        .teacher-glass-dark {
+            background: var(--teacher-surface);
+            border: 1px solid var(--teacher-border);
+            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+            backdrop-filter: blur(18px) saturate(150%);
+            -webkit-backdrop-filter: blur(18px) saturate(150%);
+            color: #0f172a;
+        }
+        .teacher-glass-light {
+            background: var(--teacher-surface);
+            border: 1px solid var(--teacher-border);
+            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+            backdrop-filter: blur(18px) saturate(150%);
+            -webkit-backdrop-filter: blur(18px) saturate(150%);
+            color: #0f172a;
+        }
         .teacher-liquid-button {
-            border: 1px solid rgba(255,255,255,0.18);
-            background: rgba(255,255,255,0.12);
-            color: #e2e8f0;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 10px 28px rgba(2,6,23,0.24);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--teacher-border);
+            background: #fff;
+            color: #475569;
+            box-shadow: none;
         }
         .teacher-liquid-button:hover {
-            background: rgba(255,255,255,0.2);
-            color: #fff;
+            background: #f8fafc;
+            color: #1d4ed8;
             transform: translateY(-1px);
         }
         .teacher-glass-light .teacher-liquid-button {
-            background: rgba(255,255,255,0.12);
-            color: #e2e8f0;
-            border-color: rgba(255,255,255,0.18);
+            background: #fff;
+            color: #475569;
+            border-color: var(--teacher-border);
         }
         .teacher-glass-light .teacher-liquid-button:hover {
-            background: rgba(255,255,255,0.2);
-            color: #fff;
+            background: #f8fafc;
+            color: #1d4ed8;
         }
         .teacher-liquid-primary {
-            background: linear-gradient(135deg, rgba(14,165,233,0.94), rgba(16,185,129,0.84));
+            background: #2563eb;
             color: #fff;
-            border-color: rgba(255,255,255,0.3);
-            box-shadow: 0 16px 44px rgba(14,165,233,0.28);
+            border: 1px solid #2563eb;
+            box-shadow: 0 12px 28px rgba(37,99,235,0.22);
         }
         .teacher-liquid-danger {
-            background: linear-gradient(135deg, rgba(239,68,68,0.9), rgba(244,63,94,0.78));
-            color: #fff;
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
         }
         .teacher-course-stage {
-            position: absolute;
-            inset: 0;
-            padding: 12px;
+            position: relative;
+            flex: 1;
+            min-height: 0;
+            padding: 0;
             z-index: 1;
+            border-radius: 24px;
+            border: 1px solid rgba(226, 232, 240, 0.92);
+            background: #fff;
+            box-shadow: 0 20px 58px rgba(15, 23, 42, 0.1);
+            overflow: hidden;
         }
         .teacher-course-stage > * {
+            height: 100%;
             border-radius: 24px;
             overflow: hidden;
-            box-shadow: 0 30px 100px rgba(0,0,0,0.35);
+            box-shadow: none;
+            background: transparent !important;
+        }
+        .teacher-course-stage > .flex {
+            background: transparent !important;
+        }
+        .teacher-course-stage [data-lumesync-stage-root="true"] {
+            box-shadow: none !important;
+            border: 1px solid rgba(226, 232, 240, 0.92);
+            border-radius: 20px !important;
         }
         .teacher-glass-drawer {
-            background: linear-gradient(145deg, var(--teacher-glass-strong), var(--teacher-glass));
-            border-left: 1px solid rgba(255,255,255,0.16);
-            box-shadow: -30px 0 90px rgba(0,0,0,0.42);
-            backdrop-filter: blur(28px) saturate(150%);
-            -webkit-backdrop-filter: blur(28px) saturate(150%);
-            color: #f8fafc;
+            background: #fff;
+            border-left: 1px solid var(--teacher-border);
+            box-shadow: -18px 0 48px rgba(15,23,42,0.14);
+            color: #0f172a;
         }
         .teacher-shell-page button,
         .teacher-glass button {
@@ -198,11 +248,6 @@ const ensureTeacherShellStyles = () => {
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
         .teacher-glass-enter { animation: teacherGlassIn 260ms ease-out both; }
-        @keyframes teacherDockIn {
-            from { opacity: 0; transform: translateX(-50%) translateY(14px) scale(0.98); }
-            to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-        }
-        .teacher-floating-dock.teacher-glass-enter { animation: teacherDockIn 260ms ease-out both; }
     `;
     document.head.appendChild(style);
 };
@@ -363,7 +408,7 @@ function ClassroomApp() {
         alertLeave: true,
         alertFullscreenExit: true,
         alertTabHidden: true,
-        monitorEnabled: false,
+        monitorEnabled: true,
         monitorIntervalSec: 1,
     };
     const clampMonitorIntervalSec = (value) => {
@@ -434,7 +479,7 @@ function ClassroomApp() {
         if (!shell || !host) return null;
         const shellRect = shell.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
-        const inset = 12; // .teacher-course-stage padding
+        const inset = 0; // .teacher-course-stage has no inner padding in the classroom workspace
         const width = Math.max(1, hostRect.width - inset * 2);
         const height = Math.max(1, hostRect.height - inset * 2);
         return {
@@ -1116,9 +1161,9 @@ function ClassroomApp() {
         return (
             <div className="teacher-shell-page flex h-full items-center justify-center select-none" onMouseDown={handleTitlebarMouseDown}>
                 <div className="teacher-glass-dark teacher-glass-enter rounded-[32px] px-12 py-10 text-center">
-                    <i className="fas fa-network-wired fa-fade text-5xl text-sky-300 mb-6"></i>
+                    <i className="fas fa-network-wired fa-fade text-5xl text-blue-600 mb-6"></i>
                     <h2 className="text-2xl tracking-widest font-black">正在连接课堂服务器...</h2>
-                    <p className="text-slate-400 mt-2">正在验证身份并分配权限...</p>
+                    <p className="text-slate-500 mt-2">正在验证身份并分配权限...</p>
                 </div>
             </div>
         );
@@ -1169,13 +1214,13 @@ function ClassroomApp() {
     if (isLoading) {
         return (
             <div className="teacher-shell-page flex h-full items-center justify-center select-none px-8" onMouseDown={handleTitlebarMouseDown}>
-                <div className="teacher-glass-dark teacher-glass-enter flex w-full max-w-xl flex-col items-center rounded-[34px] px-10 py-12 text-white">
-                <i className="fas fa-layer-group fa-bounce text-6xl text-sky-300 mb-8"></i>
+                <div className="teacher-glass-dark teacher-glass-enter flex w-full max-w-xl flex-col items-center rounded-[34px] px-10 py-12 text-slate-900">
+                <i className="fas fa-layer-group fa-bounce text-6xl text-blue-600 mb-8"></i>
 
                 <h2 className="text-3xl tracking-widest font-bold mb-3">正在加载课件内容...</h2>
 
                 {/* 进度条 */}
-                <div className="w-80 h-2 bg-white/10 rounded-full overflow-hidden mb-4">
+                <div className="w-80 h-2 bg-slate-200 rounded-full overflow-hidden mb-4">
                     <div
                         className="h-full bg-gradient-to-r from-sky-300 to-emerald-300 transition-all duration-300 ease-out"
                         style={{ width: `${loadingProgress.progress}%` }}
@@ -1200,7 +1245,7 @@ function ClassroomApp() {
                     步骤 {loadingProgress.currentStepIndex} / {loadingProgress.totalSteps}
                 </div>
 
-                <p className="text-slate-400 mt-4 text-sm flex items-center">
+                <p className="text-slate-500 mt-4 text-sm flex items-center">
                     <i className="fas fa-bolt text-yellow-400 mr-2"></i> 请稍候，正在准备课堂环境
                 </p>
                 </div>
@@ -1217,7 +1262,7 @@ function ClassroomApp() {
             });
         };
         return (
-            <div className="teacher-shell-page flex h-full flex-col items-center justify-center text-white select-none p-8" onMouseDown={handleTitlebarMouseDown}>
+            <div className="teacher-shell-page flex h-full flex-col items-center justify-center text-slate-900 select-none p-8" onMouseDown={handleTitlebarMouseDown}>
                 <div className="teacher-glass-dark teacher-glass-enter w-full max-w-3xl rounded-[34px] p-8 text-center">
                 <i className="fas fa-circle-exclamation text-5xl text-rose-300 mb-6"></i>
                 <h2 className="text-2xl font-black mb-2">课件加载失败</h2>
@@ -1226,19 +1271,19 @@ function ClassroomApp() {
                         <div className="bg-red-950/50 border border-red-300/20 rounded-3xl p-6 text-left backdrop-blur-xl">
                             <div className="flex items-center justify-between mb-2">
                                 <p className="text-red-300 font-bold flex items-center"><i className="fas fa-bug mr-2"></i> 错误详情</p>
-                                <button onClick={handleCopy} className={`teacher-liquid-button flex items-center px-3 py-1 rounded-xl text-xs font-bold ${copyDone ? 'text-emerald-200' : 'text-red-200'}`}>
+                                <button onClick={handleCopy} className={`teacher-liquid-button flex items-center px-3 py-1 rounded-xl text-xs font-bold ${copyDone ? 'text-emerald-600' : 'text-red-600'}`}>
                                     <i className={`fas ${copyDone ? 'fa-check' : 'fa-copy'} mr-1.5`}></i>
                                     {copyDone ? '已复制' : '复制'}
                                 </button>
                             </div>
-                            <pre className="text-red-200 text-sm font-mono whitespace-pre-wrap break-all leading-relaxed">{errorText}</pre>
+                            <pre className="text-red-600 text-sm font-mono whitespace-pre-wrap break-all leading-relaxed">{errorText}</pre>
                         </div>
                         <button onClick={handleEndCourse} className="teacher-liquid-button mt-6 px-6 py-3 rounded-2xl font-bold">
                             <i className="fas fa-arrow-left mr-2"></i> 返回课件选择
                         </button>
                     </div>
                 ) : (
-                    <p className="text-slate-400 mt-2">请等待老师重新加载课件</p>
+                    <p className="text-slate-500 mt-2">请等待老师重新加载课件</p>
                 )}
                 </div>
             </div>
@@ -1247,11 +1292,11 @@ function ClassroomApp() {
 
     if (!currentCourseData) {
         return (
-            <div className="teacher-shell-page flex h-full items-center justify-center text-white select-none px-8" onMouseDown={handleTitlebarMouseDown}>
+            <div className="teacher-shell-page flex h-full items-center justify-center text-slate-900 select-none px-8" onMouseDown={handleTitlebarMouseDown}>
                 <div className="teacher-glass-dark teacher-glass-enter rounded-[34px] px-12 py-10 text-center">
-                    <i className="fas fa-layer-group fa-bounce text-6xl text-sky-300 mb-8"></i>
+                    <i className="fas fa-layer-group fa-bounce text-6xl text-blue-600 mb-8"></i>
                     <h2 className="text-3xl tracking-widest font-bold mb-3">正在加载课件内容...</h2>
-                    <p className="text-slate-400 mt-4 text-sm flex items-center">
+                    <p className="text-slate-500 mt-4 text-sm flex items-center">
                         <i className="fas fa-bolt text-yellow-400 mr-2"></i> 请稍候，正在准备课堂环境
                     </p>
                 </div>
@@ -1261,72 +1306,162 @@ function ClassroomApp() {
 
     return (
         <window.LumeSyncRenderEngine.CourseErrorBoundary courseId={currentCourseId} onEndCourse={isHost ? handleEndCourse : null}>
-            <div ref={shellPageRef} className="teacher-shell-page h-full overflow-hidden font-sans select-none relative">
-                <div
-                    className="teacher-floating-topbar teacher-glass-dark teacher-glass-enter flex items-center justify-between"
+            <div ref={shellPageRef} className="teacher-shell-page teacher-classroom-shell font-sans select-none relative">
+                <header
+                    className="teacher-classroom-header"
                     style={{WebkitAppRegion:'drag'}}
                     onMouseDown={handleTitlebarMouseDown}
                     onDoubleClick={handleTitlebarDoubleClick}
                 >
-                    <div className="flex items-center space-x-3 flex-1 min-w-0">
-                        <i className="fas fa-microchip text-sky-200 text-2xl md:text-3xl"></i>
-                        <h1 className="flex-1 min-w-0 text-lg md:text-2xl font-bold text-white tracking-wide truncate">{currentCourseData.title}</h1>
+                    <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600">
+                            <i className="fas fa-chalkboard-user text-xl"></i>
+                        </div>
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                                <h1 className="truncate text-xl font-black tracking-tight text-slate-950">{currentCourseData.title}</h1>
+                                <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">&#x6388;&#x8bfe;&#x4e2d;</span>
+                            </div>
+                            <p className="mt-0.5 text-sm font-medium text-slate-500">&#x7b2c; {currentSlide + 1} &#x9875; / &#x5171; {currentCourseData.slides.length} &#x9875;</p>
+                        </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5" style={{WebkitAppRegion:'no-drag'}} data-window-control="true">
                         <button
                             onClick={() => window.__LumeSyncOpenClassroomWindow?.()}
-                            className="px-3 py-1 text-xs md:text-sm font-bold rounded-full border bg-sky-300/15 text-sky-100 border-sky-200/30 flex items-center shadow-inner hover:bg-sky-300/25 transition-colors"
-                            title="点击查看机房视图"
-                            style={{WebkitAppRegion:'no-drag'}}
-                            data-window-control="true"
+                            className="flex h-9 items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-3 text-sm font-bold text-blue-700 hover:bg-blue-100"
+                            title="&#x67e5;&#x770b;&#x673a;&#x623f;&#x89c6;&#x56fe;"
                         >
-                            <span className="relative flex h-2 w-2 mr-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
-                            </span>
-                            在线学生: {studentCount}
+                            <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                            {studentCount}
                         </button>
-                    </div>
-                    <div className="flex items-center space-x-3 md:space-x-4" style={{WebkitAppRegion:'no-drag'}} data-window-control="true">
-                        <button onClick={handleEndCourse} className="teacher-liquid-danger flex items-center px-3 py-2 rounded-2xl text-sm font-bold" title="结束课件">
-                            <i className="fas fa-stop"></i>
+                        <button onClick={() => goToSlide(currentSlide - 1)} disabled={currentSlide === 0} className={`flex h-9 w-9 items-center justify-center rounded-2xl text-sm font-bold transition-all ${currentSlide === 0 ? 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400' : 'teacher-liquid-button'}`} title="&#x4e0a;&#x4e00;&#x9875;">
+                            <i className="fas fa-chevron-left"></i>
                         </button>
-                        <button onClick={() => setShowSettings(v => !v)} className="teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-sm font-bold" title="课堂设置">
-                            <i className="fas fa-gear"></i>
+                        <span className="flex h-9 items-center rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-black text-slate-800">{currentSlide + 1} / {currentCourseData.slides.length}</span>
+                        <button onClick={() => goToSlide(currentSlide + 1)} disabled={currentSlide === currentCourseData.slides.length - 1} className={`flex h-9 w-9 items-center justify-center rounded-2xl text-sm font-bold transition-all ${currentSlide === currentCourseData.slides.length - 1 ? 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400' : 'teacher-liquid-primary'}`} title="&#x4e0b;&#x4e00;&#x9875;">
+                            <i className="fas fa-chevron-right"></i>
                         </button>
-                        <button onClick={() => setShowLog(v => !v)} className="teacher-liquid-button flex items-center px-3 py-2 rounded-2xl text-sm font-bold relative" title="学生日志">
+                        <button
+                            onClick={toggleInteractionSync}
+                            className={`flex h-9 w-9 items-center justify-center rounded-2xl border text-sm font-bold transition-all ${(settings && settings.syncInteraction === true) ? 'border-blue-200 bg-blue-50 text-blue-700' : 'teacher-liquid-button'}`}
+                            title={(settings && settings.syncInteraction === true) ? '同步互动中' : '开启互动同步'}
+                        >
+                            <i className={`fas ${(settings && settings.syncInteraction === true) ? 'fa-sync' : 'fa-rotate'}`}></i>
+                        </button>
+                        {isHost && [
+                            { icon: 'fa-pen', title: '批注', active: annotateEnabled, onClick: () => setAnnotateEnabled(v => !v) },
+                            { icon: 'fa-grip-lines', title: '粗细', active: annoPopupType === 'width', onClick: () => { setAnnotateEnabled(true); setAnnoPopupType(v => v === 'width' ? null : 'width'); } },
+                            { icon: 'fa-palette', title: '颜色', active: annoPopupType === 'color', onClick: () => { setAnnotateEnabled(true); setAnnoPopupType(v => v === 'color' ? null : 'color'); } },
+                            { icon: 'fa-trash-can', title: '清空批注', active: false, onClick: handleClearAnno },
+                        ].map((btn) => (
+                            <button
+                                key={btn.icon}
+                                title={btn.title}
+                                onClick={btn.onClick}
+                                className={`flex h-9 w-9 items-center justify-center rounded-2xl text-sm transition-colors ${btn.active ? 'border border-blue-600 bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                            >
+                                <i className={`fas ${btn.icon}`}></i>
+                            </button>
+                        ))}
+                        <button onClick={() => setShowLog(v => !v)} className="teacher-liquid-button relative flex h-9 w-9 items-center justify-center rounded-2xl text-sm" title="&#x5b66;&#x751f;&#x65e5;&#x5fd7;">
                             <i className="fas fa-list-ul"></i>
                             {sharedStudentLog.length > 0 && (
-                                <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
+                                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-bold text-white">
                                     {sharedStudentLog.length > 99 ? '99' : sharedStudentLog.length}
                                 </span>
                             )}
                         </button>
+                        <button onClick={() => setShowSettings(v => !v)} className="teacher-liquid-button flex h-9 w-9 items-center justify-center rounded-2xl text-sm" title="&#x8bfe;&#x5802;&#x8bbe;&#x7f6e;">
+                            <i className="fas fa-gear"></i>
+                        </button>
+                        <button onClick={handleEndCourse} className="teacher-liquid-danger flex h-9 w-9 items-center justify-center rounded-2xl text-sm" title="&#x7ed3;&#x675f;&#x6388;&#x8bfe;">
+                            <i className="fas fa-stop"></i>
+                        </button>
                         <WindowControls />
                     </div>
-                </div>
+                </header>
 
-                <div ref={teacherStageHostRef} className="teacher-course-stage">
-                    <window.LumeSyncRenderEngine.CourseStage
-                        courseId={currentCourseId}
-                        title={currentCourseData.title}
-                        slides={currentCourseData.slides}
-                        socket={socketRef.current}
-                        isHost={isHost}
-                        initialSlide={initialSlideIndex}
-                        currentSlide={currentSlide}
-                        onSlideChange={(index) => setCurrentSlide(index)}
-                        settings={settings}
-                        onSettingsChange={handleSettingsChange}
-                        studentCount={studentCount}
-                        studentLog={sharedStudentLog}
-                        studentInfo={studentInfo}
-                        renderChrome={false}
-                        renderTeacherOverlays={false}
-                        hideTopBar={true}
-                        hideBottomBar={true}
-                    />
-                </div>
+                <main className="teacher-classroom-main" style={{WebkitAppRegion:'no-drag'}}>
+                    <section className="teacher-stage-panel">
+                        <div className="teacher-stage-toolbar flex items-center justify-between gap-4">
+                            <div className="flex min-w-0 items-center gap-3">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                                    <i className="fas fa-layer-group"></i>
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-black text-slate-900">&#x8bfe;&#x4ef6;&#x753b;&#x5e03;</p>
+                                    <p className="truncate text-xs font-medium text-slate-500">&#x6d45;&#x8272;&#x5de5;&#x4f5c;&#x533a;&#xff0c;&#x805a;&#x7126;&#x6388;&#x8bfe;&#x5185;&#x5bb9;</p>
+                                </div>
+                            </div>
+                            <div className="hidden min-w-0 flex-1 items-center justify-end gap-1 md:flex">
+                                {currentCourseData.slides.slice(0, 18).map((_, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => goToSlide(idx)}
+                                        className={`h-2 rounded-full transition-all ${idx === currentSlide ? 'w-8 bg-blue-600' : 'w-2 bg-slate-200 hover:bg-slate-300'}`}
+                                        title={`\u7b2c ${idx + 1} \u9875`}
+                                    />
+                                ))}
+                                {currentCourseData.slides.length > 18 && <span className="ml-1 text-xs font-bold text-slate-400">+{currentCourseData.slides.length - 18}</span>}
+                            </div>
+                        </div>
 
-                {/* 批注画布：覆盖在课件上方，inset 与 teacher-course-stage 的 padding 对齐 */}
+                        <div ref={teacherStageHostRef} className="teacher-course-stage">
+                            <window.LumeSyncRenderEngine.CourseStage
+                                courseId={currentCourseId}
+                                title={currentCourseData.title}
+                                slides={currentCourseData.slides}
+                                socket={socketRef.current}
+                                isHost={isHost}
+                                initialSlide={initialSlideIndex}
+                                currentSlide={currentSlide}
+                                onSlideChange={(index) => setCurrentSlide(index)}
+                                settings={settings}
+                                onSettingsChange={handleSettingsChange}
+                                studentCount={studentCount}
+                                studentLog={sharedStudentLog}
+                                studentInfo={studentInfo}
+                                renderChrome={false}
+                                renderTeacherOverlays={false}
+                                hideTopBar={true}
+                                hideBottomBar={true}
+                            />
+                        </div>
+                    </section>
+
+                </main>
+
+                {isHost && annoPopupType === 'width' && (
+                    <div className="absolute right-56 top-16 z-[9992] w-56 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur-xl" data-window-control="true">
+                        <div className="mb-2 flex items-center justify-between">
+                            <span className="text-sm font-bold text-slate-700">&#x753b;&#x7b14;&#x7c97;&#x7ec6;</span>
+                            <span className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-500">{annoWidth}px</span>
+                        </div>
+                        <input type="range" min="2" max="20" value={annoWidth} onChange={e => setAnnoWidth(Number(e.target.value))} className="w-full" />
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            {['pen','marker','highlighter','eraser'].map(t => (
+                                <button key={t} onClick={() => setAnnoTool(t)} className={`rounded-xl border px-2 py-2 text-xs font-bold transition-colors ${annoTool === t ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'}`}>
+                                    {t === 'pen' ? '\u94a2\u7b14' : t === 'marker' ? '\u8bb0\u53f7\u7b14' : t === 'highlighter' ? '\u8367\u5149\u7b14' : '\u6a61\u76ae'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {isHost && annoPopupType === 'color' && (
+                    <div className="absolute right-44 top-16 z-[9992] w-56 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur-xl" data-window-control="true">
+                        <div className="mb-2 flex items-center justify-between">
+                            <span className="text-sm font-bold text-slate-700">&#x753b;&#x7b14;&#x989c;&#x8272;</span>
+                            <input type="color" value={annoColor} disabled={annoTool === 'eraser'} onChange={e => setAnnoColor(e.target.value)} className={`h-8 w-10 border-0 bg-transparent p-0 ${annoTool === 'eraser' ? 'cursor-not-allowed opacity-40' : ''}`} />
+                        </div>
+                        <div className="grid grid-cols-8 gap-2">
+                            {['#ef4444','#f97316','#facc15','#22c55e','#3b82f6','#a855f7','#0f172a','#ffffff'].map(c => (
+                                <button key={c} onClick={() => setAnnoColor(c)} disabled={annoTool === 'eraser'} className={`h-7 rounded-full border transition-all ${annoTool === 'eraser' ? 'cursor-not-allowed border-slate-200 opacity-40' : (annoColor.toLowerCase() === c.toLowerCase() ? 'border-blue-600 ring-2 ring-blue-300' : 'border-slate-200 hover:border-slate-300')}`} style={{ background: c }} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {isHost && (
                     <canvas
                         ref={annoCanvasRef}
@@ -1337,7 +1472,7 @@ function ClassroomApp() {
                             pointerEvents: annotateEnabled ? 'auto' : 'none',
                             touchAction: 'none',
                             cursor: annotateEnabled ? (annoTool === 'eraser' ? 'cell' : 'crosshair') : 'default',
-                            borderRadius: '24px',
+                            borderRadius: '20px',
                         }}
                         onPointerDown={handleAnnoPointerDown}
                         onPointerMove={handleAnnoPointerMove}
@@ -1351,105 +1486,20 @@ function ClassroomApp() {
                     />
                 )}
 
-                {/* 批注工具栏 */}
-                {isHost && (
-                    <div className="absolute left-6 top-1/2 -translate-y-1/2 z-[9991] flex flex-col gap-2">
-                        {[
-                            { icon: 'fa-pen', title: '开启/关闭批注', active: annotateEnabled, onClick: () => setAnnotateEnabled(v => !v) },
-                            { icon: 'fa-grip-lines', title: '画笔粗细', active: annoPopupType === 'width', onClick: () => { setAnnotateEnabled(true); setAnnoPopupType(v => v === 'width' ? null : 'width'); } },
-                            { icon: 'fa-palette', title: '画笔颜色', active: annoPopupType === 'color', onClick: () => { setAnnotateEnabled(true); setAnnoPopupType(v => v === 'color' ? null : 'color'); } },
-                            { icon: 'fa-trash-can', title: '清空本页', active: false, onClick: handleClearAnno },
-                            { icon: 'fa-xmark', title: '退出批注', active: false, danger: true, onClick: () => { stopAnnoDrawing(); setAnnotateEnabled(false); setAnnoPopupType(null); } },
-                        ].map((btn) => (
-                            <button
-                                key={btn.icon}
-                                title={btn.title}
-                                onClick={btn.onClick}
-                                className={`w-9 h-9 rounded-xl text-sm flex items-center justify-center transition-colors ${
-                                    btn.danger ? 'bg-red-700/80 hover:bg-red-600 text-white' :
-                                    btn.active ? 'bg-blue-500 text-white' :
-                                    'bg-slate-700 hover:bg-slate-600 text-white'
-                                }`}
-                            >
-                                <i className={`fas ${btn.icon}`}></i>
-                            </button>
-                        ))}
-
-                        {/* 粗细弹出 */}
-                        {annoPopupType === 'width' && (
-                            <div className="absolute left-12 top-8 w-52 bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl p-3 shadow-xl z-10">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-slate-600 font-bold text-sm">粗细</span>
-                                    <span className="text-slate-500 font-mono text-xs bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg">{annoWidth}px</span>
-                                </div>
-                                <input type="range" min="2" max="20" value={annoWidth} onChange={e => setAnnoWidth(Number(e.target.value))} className="w-full" />
-                                <div className="mt-2 flex gap-2 flex-wrap">
-                                    {['pen','marker','highlighter','eraser'].map(t => (
-                                        <button key={t} onClick={() => setAnnoTool(t)} className={`px-2 py-1 rounded-lg text-xs font-bold border transition-colors ${annoTool === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`}>
-                                            {t === 'pen' ? '钢笔' : t === 'marker' ? '记号笔' : t === 'highlighter' ? '荧光笔' : '橡皮'}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* 颜色弹出 */}
-                        {annoPopupType === 'color' && (
-                            <div className="absolute left-12 top-16 w-52 bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl p-3 shadow-xl z-10">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-slate-600 font-bold text-sm">颜色</span>
-                                    <input type="color" value={annoColor} disabled={annoTool === 'eraser'} onChange={e => setAnnoColor(e.target.value)} className={`w-10 h-7 p-0 border-0 bg-transparent ${annoTool === 'eraser' ? 'opacity-40 cursor-not-allowed' : ''}`} />
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    {['#ef4444','#f97316','#facc15','#22c55e','#3b82f6','#a855f7','#0f172a','#ffffff'].map(c => (
-                                        <button key={c} onClick={() => setAnnoColor(c)} disabled={annoTool === 'eraser'} className={`w-7 h-7 rounded-full border transition-all ${annoTool === 'eraser' ? 'opacity-40 cursor-not-allowed border-slate-200' : (annoColor.toLowerCase() === c.toLowerCase() ? 'border-blue-600 ring-2 ring-blue-300' : 'border-slate-200 hover:border-slate-300')}`} style={{ background: c }} />
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
                 {annotateEnabled && isHost && (
-                    <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[9992] px-3 py-1.5 rounded-xl bg-blue-600/90 text-white text-xs font-bold border border-blue-300 shadow-lg backdrop-blur-sm pointer-events-none">
-                        标注模式：拖动绘制
+                    <div className="absolute left-1/2 top-24 z-[9992] -translate-x-1/2 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 shadow-sm pointer-events-none">
+                        &#x6807;&#x6ce8;&#x6a21;&#x5f0f;&#xff1a;&#x62d6;&#x52a8;&#x753b;&#x5e03;&#x5373;&#x53ef;&#x7ed8;&#x5236;
                     </div>
                 )}
-
-                <div className="teacher-floating-dock teacher-glass-light teacher-glass-enter flex items-center gap-4">
-                    <button onClick={() => goToSlide(currentSlide - 1)} disabled={currentSlide === 0} className={`flex items-center px-4 md:px-6 py-2 md:py-2.5 rounded-2xl font-bold text-base md:text-lg transition-all ${currentSlide === 0 ? 'text-slate-400 bg-white/30 cursor-not-allowed' : 'teacher-liquid-primary hover:-translate-x-1'}`}>
-                        <i className="fas fa-chevron-left mr-2"></i>上一页
-                    </button>
-                    <div className="flex items-center gap-3 relative">
-                        <span className="text-slate-100 font-black text-base md:text-lg tracking-widest bg-white/12 px-4 md:px-6 py-1 md:py-2 rounded-full shadow-inner border border-white/20">
-                            {currentSlide + 1} / {currentCourseData.slides.length}
-                        </span>
-                        <button
-                            onClick={toggleInteractionSync}
-                            className={`flex items-center px-4 md:px-5 py-2 md:py-2.5 rounded-2xl font-bold text-base md:text-lg transition-all border ${
-                                (settings && settings.syncInteraction === true)
-                                    ? 'bg-amber-400/90 text-white border-white/40 shadow-lg'
-                                    : 'teacher-liquid-button text-slate-100'
-                            }`}
-                            title={(settings && settings.syncInteraction === true) ? '已开启交互同步（点击关闭）' : '开启教师交互同步（学生端同步所有操作）'}
-                        >
-                            <i className={`fas ${(settings && settings.syncInteraction === true) ? 'fa-sync' : 'fa-rotate'} mr-2`}></i>
-                            {(settings && settings.syncInteraction === true) ? '同步交互' : '开启同步'}
-                        </button>
-                    </div>
-                    <button onClick={() => goToSlide(currentSlide + 1)} disabled={currentSlide === currentCourseData.slides.length - 1} className={`flex items-center px-4 md:px-6 py-2 md:py-2.5 rounded-2xl font-bold text-base md:text-lg transition-all ${currentSlide === currentCourseData.slides.length - 1 ? 'text-slate-400 bg-white/30 cursor-not-allowed' : 'teacher-liquid-primary hover:translate-x-1'}`}>
-                        下一页<i className="fas fa-chevron-right ml-2"></i>
-                    </button>
-                </div>
 
                 {showLog && (
-                    <div className={`fixed inset-0 ${getTeacherLayerClass('drawer')} flex justify-end bg-black/20 backdrop-blur-sm`} onClick={() => setShowLog(false)}>
+                    <div className={`fixed inset-0 ${getTeacherLayerClass('drawer')} flex justify-end bg-slate-950/20 backdrop-blur-sm`} onClick={() => setShowLog(false)}>
                         <div className="teacher-glass-drawer w-96 h-full flex flex-col" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
-                                <h3 className="font-bold text-white text-lg flex items-center">
-                                    <i className="fas fa-list-ul mr-2 text-sky-300"></i> 学生操作日志
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
+                                <h3 className="flex items-center text-lg font-black text-slate-950">
+                                    <i className="fas fa-list-ul mr-2 text-blue-600"></i> 学生操作日志
                                 </h3>
-                                <button onClick={() => setShowLog(false)} className="text-slate-300 hover:text-white"><i className="fas fa-xmark text-xl"></i></button>
+                                <button onClick={() => setShowLog(false)} className="text-slate-400 hover:text-slate-900"><i className="fas fa-xmark text-xl"></i></button>
                             </div>
                             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 text-sm">
                                 {sharedStudentLog.length === 0 ? (

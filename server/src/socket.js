@@ -168,6 +168,13 @@ function pushLog(type, ip, extra) {
     if (studentLog.length > config.studentLogMax) {
         studentLog.shift();
     }
+    return entry;
+}
+
+function emitStudentLogEntry(io, type, ip, extra = {}) {
+    const entry = pushLog(type, ip, extra);
+    io.to('hosts').emit('student-log-entry', entry);
+    return entry;
 }
 
 function sanitizeScreenshotPayload(clientIp, data) {
@@ -315,7 +322,7 @@ function setupSocketHandlers(io, {
             studentIPs.set(clientIp, prev + 1);
             // 鍙湁璇?IP 鐨勭涓€涓繛鎺ユ墠瑙﹀彂 join 閫氱煡
             if (prev === 0) {
-                pushLog('join', clientIp);
+                emitStudentLogEntry(io, 'join', clientIp);
                 io.to('hosts').emit('student-status', { count: studentIPs.size, action: 'join', ip: clientIp });
             }
         }
@@ -438,7 +445,7 @@ function setupSocketHandlers(io, {
         socket.on('student-alert', (data) => {
             if (role !== 'viewer') return;
             const { type } = data;
-            pushLog(type, clientIp, {});
+            emitStudentLogEntry(io, type, clientIp);
             io.to('hosts').emit('student-alert', { ip: clientIp, type });
         });
 
@@ -856,7 +863,7 @@ function setupSocketHandlers(io, {
                 const count = studentIPs.get(clientIp) || 0;
                 if (count <= 1) {
                     studentIPs.delete(clientIp);
-                    pushLog('leave', clientIp);
+                    emitStudentLogEntry(io, 'leave', clientIp);
                     clearStudentScreenshot(io, clientIp);
                     io.to('hosts').emit('student-status', { count: studentIPs.size, action: 'leave', ip: clientIp });
                 } else {
